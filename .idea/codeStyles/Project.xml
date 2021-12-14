@@ -1,0 +1,17 @@
+<component name="ProjectCodeStyleConfiguration">
+  <code_scheme name="Project" version="173">
+    <Objective-C>
+      <option name="SPACE_BEFORE_POINTER_IN_DECLARATION" value="false" />
+      <option name="SPACE_AFTER_POINTER_IN_DECLARATION" value="true" />
+      <option name="SPACE_BEFORE_REFERENCE_IN_DECLARATION" value="false" />
+      <option name="SPACE_AFTER_REFERENCE_IN_DECLARATION" value="true" />
+    </Objective-C>
+    <Objective-C-extensions>
+      <rules>
+        <rule entity="NAMESPACE,CLASS,STRUCT,ENUM,UNION,TYPEDEF" visibility="ANY" specifier="ANY" prefix="" style="PASCAL_CASE" suffix="" />
+        <rule entity="MACRO,ENUMERATOR" visibility="ANY" specifier="ANY" prefix="" style="SCREAMING_SNAKE_CASE" suffix="" />
+        <rule entity="GLOBAL_FUNCTION,GLOBAL_VARIABLE,CLASS_MEMBER_FUNCTION,STRUCT_MEMBER_FUNCTION,CLASS_MEMBER_FIELD,STRUCT_MEMBER_FIELD,PARAMETER,LOCAL_VARIABLE" visibility="ANY" specifier="ANY" prefix="" style="SNAKE_CASE" suffix="" />
+      </rules>
+    </Objective-C-extensions>
+  </code_scheme>
+</component>
