@@ -15,6 +15,10 @@ class Arc {
     T* ptr;
     unsigned int* ref_count;
 
+    __device__ bool dec_test() {
+        return ref_count && (atomicSub(ref_count, 1) == 1);
+    }
+
 public:
     __device__ Arc() : ptr(nullptr), ref_count(nullptr) {}
 
@@ -23,19 +27,19 @@ public:
     }
 
     __device__ ~Arc() {
-        if (ptr && atomicSub(ref_count, 1) == 1) {
+        if (ptr && dec_test()) {
             delete ref_count;
             delete ptr;
         }
     }
 
-    __device__ Arc(const Arc<T>& other) : ptr(other.ptr), ref_count(other.ref_count) {
+    __device__ Arc(const Arc& other) : ptr(other.ptr), ref_count(other.ref_count) {
         if (ptr) atomicAdd(ref_count, 1);
     }
 
-    __device__ Arc& operator=(const Arc<T>& other) {
+    __device__ Arc& operator=(const Arc& other) {
         if (&other != this) {
-            if (ptr && atomicSub(ref_count, 1) == 1) {
+            if (ptr && dec_test()) {
                 delete ref_count;
                 delete ptr;
             }
@@ -43,6 +47,27 @@ public:
             ptr = other.ptr;
             ref_count = other.ref_count;
             if (ptr) atomicAdd(ref_count, 1);
+        }
+
+        return *this;
+    }
+
+    __device__ Arc(Arc&& other) noexcept: ptr(other.ptr), ref_count(other.ref_count) {
+        other.ptr = nullptr;
+        other.ref_count = nullptr;
+    }
+
+    __device__ Arc& operator=(Arc&& other) noexcept {
+        if (&other != this) {
+            if (ptr && dec_test()) {
+                delete ref_count;
+                delete ptr;
+            }
+
+            ptr = other.ptr;
+            ref_count = other.ref_count;
+            other.ptr = nullptr;
+            other.ref_count = nullptr;
         }
 
         return *this;
