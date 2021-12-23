@@ -77,10 +77,9 @@ public:
 
     __device__ T& operator*() const { return *ptr; }
 
-    template<typename Ptr>
-    __device__ bool operator==(const Ptr& other) const { return ptr == other; }
+    __device__ bool operator==(T* other) const { return ptr == other; }
 
-    __device__ bool operator==(const Arc<T>& other) const { return ptr == other.ptr; }
+    __device__ bool operator==(const Arc& other) const { return ptr == other.ptr; }
 };
 
 template<typename T, typename ...U>
@@ -88,10 +87,23 @@ __device__ Arc<T> make_arc(U&& ...u) {
     return Arc<T>(new T(u...));
 }
 
+template<typename T>
+__device__ void swap(Arc<T>& a, Arc<T>& b) {
+    using std::move;
+    Arc<T> temp = move(a);
+    a = move(b);
+    b = move(temp);
+}
+
 template<typename Node, typename Value>
 struct State {
     Node node;
     Value g, f;
+    Arc<State<Node, Value>> prev;
+
+    __device__ bool operator<(const State& other) const {
+        return f < other.f;
+    }
 };
 
 #endif //PROJECT_EMPIRE_COMMON_H
