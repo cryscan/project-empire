@@ -38,27 +38,17 @@ __global__ void test(HeapType* heap_dev, unsigned* buf) {
 
 
 __global__ void test_hash(TableType* table_dev, unsigned* buf_dev, bool* bool_dev) {
-    size_t gindex = threadIdx.x + blockIdx.x * blockDim.x;
-    buf_dev[gindex] = gindex;
-    // if (gindex > 0) return;
-    uint64_t v1 = gindex;
-    Arc<StateType> s1 = make_arc<StateType>();
-    s1->node = v1;
-    Arc<StateType> out;
-    if (gindex == 0 || gindex == 32)  table_dev->insert(v1, s1);
-    // cudaDeviceSynchronize();
-    // bool_dev[gindex] = 1;
-    // table_dev->find(10, out);
-    // bool_dev[gindex] = table_dev->find(v1, out);
-    //if (bool_dev[gindex])
-    //{
-    //    buf_dev[gindex] = out->node;
-    //}
+    size_t index = threadIdx.x + blockIdx.x * blockDim.x;
 
+    auto key = index;
+    auto value = make_arc<StateType>();
+    value->node = key;
+    table_dev->insert(key, value);
 }
 
 int main(int argc, char** argv) {
-    /*HeapType heap(1024);
+    /*
+     * HeapType heap(1024);
 
     HeapType* heap_dev;
     HANDLE_RESULT(cudaMalloc(&heap_dev, sizeof(HeapType)))
@@ -70,11 +60,13 @@ int main(int argc, char** argv) {
     test<< <1, 1> >>(heap_dev, buf_dev);
 
     unsigned buf[5];
-    HANDLE_RESULT(cudaMemcpy(buf, buf_dev, 5 * sizeof(unsigned), cudaMemcpyDeviceToHost))*/
+    HANDLE_RESULT(cudaMemcpy(buf, buf_dev, 5 * sizeof(unsigned), cudaMemcpyDeviceToHost))
+     */
     constexpr size_t thread_count = 64;
+    constexpr size_t table_size = 1024 * 1024;
 
-    TableType table(thread_count);
-    
+    TableType table(table_size);
+
     TableType* table_dev;
     HANDLE_RESULT(cudaMalloc(&table_dev, sizeof(TableType)))
     HANDLE_RESULT(cudaMemcpy(table_dev, &table, sizeof(TableType), cudaMemcpyHostToDevice))
@@ -85,7 +77,7 @@ int main(int argc, char** argv) {
     bool* bool_dev;
     HANDLE_RESULT(cudaMalloc(&bool_dev, thread_count * sizeof(bool)));
 
-    test_hash << <1, thread_count>> > (table_dev, buf_dev, bool_dev);
+    test_hash<<<1, thread_count>>>(table_dev, buf_dev, bool_dev);
 
     unsigned buf[thread_count];
     HANDLE_RESULT(cudaMemcpy(buf, buf_dev, thread_count * sizeof(unsigned), cudaMemcpyDeviceToHost))
@@ -94,14 +86,12 @@ int main(int argc, char** argv) {
     HANDLE_RESULT(cudaMemcpy(bool_buf, bool_dev, thread_count * sizeof(bool), cudaMemcpyDeviceToHost))
 
     std::cout << "elements: \n";
-    for (auto element : buf)
-    {
+    for (auto element: buf) {
         std::cout << element << '\n';
     }
-    
+
     std::cout << "finds: \n";
-    for (auto element : bool_buf)
-    {
+    for (auto element: bool_buf) {
         std::cout << element << '\n';
     }
     return 0;
