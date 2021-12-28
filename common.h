@@ -5,6 +5,8 @@
 #ifndef PROJECT_EMPIRE_COMMON_H
 #define PROJECT_EMPIRE_COMMON_H
 
+#include <type_traits>
+
 #define HANDLE_RESULT(expr) {cudaError_t _asdf__err; if ((_asdf__err = expr) != cudaSuccess) { printf("cuda call failed at %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(_asdf__err)); exit(1);}}
 
 template<typename Node, typename Value>
@@ -77,9 +79,15 @@ public:
 
     __device__ T& operator*() const { return *ptr; }
 
-    __device__ bool operator==(T* other) const { return ptr == other; }
+    template<typename U, typename=std::enable_if_t<std::is_pointer_v<U> || std::is_null_pointer_v<U>>>
+    __device__ bool operator==(const U& other) const { return ptr == other; }
 
     __device__ bool operator==(const Arc& other) const { return ptr == other.ptr; }
+
+    template<typename U>
+    __device__ bool operator!=(const U& other) const { return !this->operator==(other); }
+
+    __device__  explicit operator bool() const { return *this != nullptr; }
 };
 
 template<typename T, typename ...U>

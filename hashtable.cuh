@@ -53,16 +53,30 @@ private:
     int* locks;
 
     __device__ size_t hash(Node key, int index) {
-        key ^= key >> 16;
-        key *= 0x85ebca6b;
-        key ^= key >> 13;
-        key *= 0xc2b2ae35;
-        key ^= key >> 16;
+        size_t hashed = 0;
+        {
+            uint32_t temp = key;
+            temp ^= temp >> 16;
+            temp *= 0x85ebca6b;
+            temp ^= temp >> 13;
+            temp *= 0xc2b2ae35;
+            temp ^= temp >> 16;
+            hashed += temp;
+        }
+        {
+            uint32_t temp = key >> 32;
+            temp ^= temp >> 16;
+            temp *= 0x85ebca6b;
+            temp ^= temp >> 13;
+            temp *= 0xc2b2ae35;
+            temp ^= temp >> 16;
+            hashed += (size_t) temp << 32;
+        }
 
         // make sure threads in one wrap are mapped into different slots
-        key <<= 5;
-        key += index;
-        return key % capacity;
+        hashed <<= 5;
+        hashed += index;
+        return hashed % capacity;
     }
 };
 

@@ -50,10 +50,10 @@ __global__ void test_hash_find(TableType* table_dev, uint64_t* buf_dev, bool* bo
     size_t index = threadIdx.x + blockIdx.x * blockDim.x;
     auto key = index;
 
-    Arc<StateType> find_result;
+    Arc<StateType> result;
     if (index == 42) key = 1000;
-    bool found = bool_dev[index] = table_dev->find(key, find_result);
-    if (found) buf_dev[index] = find_result->node;
+    bool_dev[index] = table_dev->find(key, result);
+    if (result) buf_dev[index] = result->node;
 }
 
 int main(int argc, char** argv) {
@@ -72,8 +72,8 @@ int main(int argc, char** argv) {
     unsigned buf[5];
     HANDLE_RESULT(cudaMemcpy(buf, buf_dev, 5 * sizeof(unsigned), cudaMemcpyDeviceToHost))
      */
-    constexpr size_t thread_count = 128;
-    constexpr size_t table_size = 64;
+    constexpr size_t thread_count = 1024;
+    constexpr size_t table_size = 1024 * 1024;
 
     TableType table(table_size);
 
