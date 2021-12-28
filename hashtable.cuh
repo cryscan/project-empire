@@ -24,19 +24,15 @@ public:
     }
 
     __device__ void insert(Node& key, StatePtr& state_ptr) {
-        size_t slot = hash(key);
-        for (int i = 0; i < 32; i++) {
-            if (threadIdx.x % 32 == i) {
-                while (atomicExch(&locks[slot], 1) == 1);
-                states[slot] = state_ptr;
-                atomicExch(&locks[slot], 0);
-            }
-        }
+        size_t slot = hash(key, threadIdx.x % 32);
+        while (atomicExch(&locks[slot], 1) == 1);
+        states[slot] = state_ptr;
+        atomicExch(&locks[slot], 0);
     }
 
     __device__ bool find(const Node& key, StatePtr& output) {
         // step1: hash
-        size_t slot = hash(key);
+        size_t slot = hash(key, threadIdx.x % 32);
 
         // step2: check initial & check node == key
         // StatePtr* target = states + slot;
@@ -56,13 +52,17 @@ private:
     StatePtr* states;
     int* locks;
 
-    __device__ size_t hash(Node key) {
+    __device__ size_t hash(Node key, int index) {
         key ^= key >> 16;
         key *= 0x85ebca6b;
         key ^= key >> 13;
         key *= 0xc2b2ae35;
         key ^= key >> 16;
-        return key & (capacity - 1);
+
+        // make sure threads in one wrap are mapped into different slots
+        key <<= 5;
+        key += index;
+        return key % capacity;
     }
 };
 
