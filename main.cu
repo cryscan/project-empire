@@ -5,6 +5,7 @@
 #include "common.h"
 #include "heap.h"
 #include "hashtable.cuh"
+#include "Astar.cuh"
 
 using HeapType = Heap<uint64_t, unsigned>;
 using StateType = State<uint64_t, unsigned>;
@@ -56,6 +57,8 @@ __global__ void test_hash_find(TableType* table_dev, uint64_t* buf_dev, bool* bo
     if (result) buf_dev[index] = result->node;
 }
 
+
+
 int main(int argc, char** argv) {
     /*
      * HeapType heap(1024);
@@ -72,7 +75,9 @@ int main(int argc, char** argv) {
     unsigned buf[5];
     HANDLE_RESULT(cudaMemcpy(buf, buf_dev, 5 * sizeof(unsigned), cudaMemcpyDeviceToHost))
      */
-    constexpr size_t thread_count = 1024;
+
+
+    /*constexpr size_t thread_count = 1024;
     constexpr size_t table_size = 1024 * 1024;
 
     TableType table(table_size);
@@ -107,6 +112,26 @@ int main(int argc, char** argv) {
     std::cout << "finds: \n";
     for (auto element: bool_buf) {
         std::cout << element << '\n';
-    }
+    }*/
+
+    
+    /*constexpr uint64_t HEAP_CAPACITY = 1024;
+    HeapType h(HEAP_CAPACITY);
+    HeapType* h_dev;
+    HANDLE_RESULT(cudaMalloc(&h_dev, sizeof(HeapType)))
+    HANDLE_RESULT(cudaMemcpy(h_dev, &h, sizeof(HeapType), cudaMemcpyHostToDevice))
+
+
+    uint64_t nodesInS[Directions::Direction::MAX_NEW_STATE_RATIO];
+    uint64_t* nodesInS_dev;
+    HANDLE_RESULT(cudaMalloc(&nodesInS_dev, Directions::Direction::MAX_NEW_STATE_RATIO * sizeof(uint64_t)))
+
+    unsigned valueInDest;
+    unsigned* valueInDest_dev;
+    HANDLE_RESULT(cudaMalloc(&valueInDest_dev, sizeof(unsigned)));*/
+
+
+
+
     return 0;
 }

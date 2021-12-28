@@ -61,6 +61,10 @@ public:
         return result;
     }
 
+    __device__ size_t get_size() const {
+        return size;
+    }
+
 private:
     StatePtr* states;
     size_t capacity, size;
