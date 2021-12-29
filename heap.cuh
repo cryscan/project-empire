@@ -2,8 +2,8 @@
 // Created by lepet on 12/21/2021.
 //
 
-#ifndef PROJECT_EMPIRE_HEAP_H
-#define PROJECT_EMPIRE_HEAP_H
+#ifndef PROJECT_EMPIRE_HEAP_CUH
+#define PROJECT_EMPIRE_HEAP_CUH
 
 template<typename Node, typename Value>
 class Heap {
@@ -76,4 +76,4 @@ private:
     __device__ size_t right_child(size_t index) { return index * 2 + 2; }
 };
 
-#endif //PROJECT_EMPIRE_HEAP_H
+#endif //PROJECT_EMPIRE_HEAP_CUH

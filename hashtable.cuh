@@ -2,7 +2,7 @@
 #define PROJECT_EMPIRE_HASHTABLE_CUH
 
 // #include "hashtable.cu"
-#include "common.h"
+#include "common.cuh"
 #include <cstdlib>
 #include <device_atomic_functions.h>
 

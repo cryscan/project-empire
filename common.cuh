@@ -2,8 +2,8 @@
 // Created by lepet on 12/21/2021.
 //
 
-#ifndef PROJECT_EMPIRE_COMMON_H
-#define PROJECT_EMPIRE_COMMON_H
+#ifndef PROJECT_EMPIRE_COMMON_CUH
+#define PROJECT_EMPIRE_COMMON_CUH
 
 #include <type_traits>
 
@@ -116,4 +116,4 @@ struct State {
     }
 };
 
-#endif //PROJECT_EMPIRE_COMMON_H
+#endif //PROJECT_EMPIRE_COMMON_CUH

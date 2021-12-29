@@ -3,60 +3,49 @@
 
 #include <cuda_runtime.h>
 #include <limits>
-#include "heap.h"
-#include "common.h"
+#include "heap.cuh"
+#include "common.cuh"
 
-namespace Directions
-{
-    enum Direction : size_t
-    {
-        UP,
-        RIGHT,
-        DOWN,
-        LEFT,
-        MAX_NEW_STATE_RATIO
-    };
+constexpr size_t num_threads = 1024;
 
-    static const size_t All[] = { UP, RIGHT, DOWN, LEFT };
-}
+template<typename Node, typename Value, typename ExpandFunc>
+__global__ void extract_expand(Heap<Node, Value>* queues_dev,
+                               Arc<State<Node, Value>>* s_dev,
+                               Arc<State<Node, Value>>* m_dev,
+                               const Node& t,
+                               ExpandFunc expand) {
+    auto index = threadIdx.x;
+    __shared__ Arc<State<Node, Value>> buf[num_threads];
 
-constexpr size_t THREAD_NUM = 1;
+    auto& queue = queues_dev[index];
 
-template <typename Node, typename Value>
-__device__ Arc<State<Node, Value>> expand(const Arc<State<Node, Value>>& origin, 
-                                          Directions::Direction direction) {
-    Arc<State<Node, Value>> output = make_arc<Node, Value>();
-    // temp test value
-    output->f = 10;
-    output->prev = origin;
-    return output;
-}
-
-template <typename Node, typename Value>
-__device__ void extract_expand(Heap<Node, Value>& PQ, 
-                               Arc<State<Node, Value>>& destination,
-                               Arc<State<Node, Value>>* S) {
-    
-    if (PQ.get_size() == 0) return;
-    
-    Arc<State<Node, Value>> q = PQ.pop();
-    if (q->node == destination->node) {
-        if (destination->f == std::numeric_limits<Node>::max()
-            || q->f < destination->f) {
-            destination = q;
+    if (auto q = queue.pop()) {
+        if (q->node == t) {
+            // push candidate
+            buf[index] = std::move(q);
+        } else {
+            // expand the state list
+            expand(s_dev, q, t);
         }
-        return;
     }
 
-    size_t index = threadIdx.x + blockIdx.x * blockDim.x;
-    HANDLE_RESULT(cudaMalloc(&S, Directions::Direction::MAX_NEW_STATE_RATIO * THREAD_NUM))
+    __syncthreads();
 
-    for (const Directions::Direction d : Directions::All) {
-        S[index + d * THREAD_NUM] = expand(q, d);
+    // get the best target state
+    auto i = num_threads;
+    while (i > 1) {
+        i >>= 1;
+        if (index < i) {
+            auto& a = buf[index];
+            auto& b = buf[index + i];
+            if (a && b) {
+                // a <- min(a, b)
+                if (b->f < a->f) a = std::move(b);
+            } else if (a == nullptr) a = std::move(b);
+        }
     }
     return;
 }
-
 
 
 #endif // !ASTAR_CUH
