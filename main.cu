@@ -28,7 +28,7 @@ __device__ ValueType heuristic(NodeType s, NodeType t) {
 
 // Write a specific expand function for the sliding pad nodes!
 // Can write other expand functions later, but with the same signature.
-__device__ Arc<StateType> expand(const Arc<StateType>& state, NodeType t, Direction direction) {
+__device__ Arc<StateType> expand_direction(const Arc<StateType>& state, NodeType t, Direction direction) {
     /*  Board
      *      0   1   2   3
      *      4   5   6   7
@@ -91,42 +91,17 @@ __device__ Arc<StateType> expand(const Arc<StateType>& state, NodeType t, Direct
         return make_arc<StateType>(next);
     }
 
-//    switch (direction) {
-//        case UP:
-//            if (x > 0) {
-//                uint64_t selected = state->node & (filter << 16);
-//                return (state->node | (selected >> 16)) ^ selected;
-//            }
-//            break;
-//        case DOWN:
-//            if (x < 3) {
-//                uint64_t selected = state->node & (filter >> 16);
-//                return (state->node | (selected << 16)) ^ selected;
-//            }
-//            break;
-//        case LEFT:
-//            if (y > 0) {
-//                uint64_t selected = state->node & (filter << 4);
-//                return (state->node | (selected >> 4)) ^ selected;
-//            }
-//            break;
-//        case RIGHT:
-//            if (y < 3) {
-//                uint64_t selected = state->node & (filter >> 4);
-//                return (state->node | (selected << 4)) ^ selected;
-//            }
-//            break;
-//    }
-
     return {};
 }
 
-__device__ void expand(Arc<StateType>* s_dev, const Arc<StateType>& state, NodeType t) {
-    auto index = threadIdx.x;
-    for (auto d: {UP, RIGHT, DOWN, LEFT}) {
-        s_dev[index * max_expansion + d] = expand(state, t, d);
+struct SlidingPadExpandFunc {
+    __device__ void operator()(Arc<StateType>* s_dev, const Arc<StateType>& state, NodeType t) {
+        auto index = blockIdx.x * blockDim.x + threadIdx.x;
+        for (auto d: {UP, RIGHT, DOWN, LEFT}) {
+            s_dev[index * max_expansion + d] = expand_direction(state, t, d);
+        }
     }
-}
+};
 
 __global__ void test(HeapType* heap_dev, unsigned* buf) {
     auto s1 = make_arc<StateType>();
@@ -174,26 +149,66 @@ __global__ void test_hash_find(HashtableType* table_dev, uint64_t* buf_dev, bool
     if (result) buf_dev[index] = result->node;
 }
 
+__global__ void init_heaps(HeapType* heaps_dev, NodeType s, NodeType t) {
+    StateType state;
+    state.node = s;
+    state.g = 0;
+    state.f = heuristic(s, t);
+    heaps_dev[0].push(make_arc<StateType>(state));
+}
+
+__global__ void extract_nodes(Arc<StateType>* s_dev, NodeType* nodes_dev) {
+    auto index = blockIdx.x * blockDim.x + threadIdx.x;
+    nodes_dev[index] = s_dev[index] ? s_dev[index]->node : 0;
+}
 
 int main(int argc, char** argv) {
+    std::vector<HeapType> heaps(num_threads);
+
+    HeapType* heaps_dev;
+    HANDLE_RESULT(cudaMalloc(&heaps_dev, num_threads * sizeof(HeapType)))
+    HANDLE_RESULT(cudaMemcpy(heaps_dev, heaps.data(), num_threads * sizeof(HeapType), cudaMemcpyHostToDevice))
+
+    Arc<StateType>* s_dev;
+    HANDLE_RESULT(cudaMalloc(&s_dev, num_threads * max_expansion * sizeof(Arc<StateType>)))
+    HANDLE_RESULT(cudaMemset(s_dev, 0, num_threads * max_expansion * sizeof(Arc<StateType>)))
+
+    Arc<StateType>* m_dev;
+    HANDLE_RESULT(cudaMalloc(&m_dev, sizeof(Arc<StateType>)))
+
+    // test section
+    // test function here
+    NodeType s = 0xfedcba9876543210;
+    NodeType t = 0x0123456789abcdef;
+
+    init_heaps<<<1, 1>>>(heaps_dev, s, t);
+    extract_expand<<<1, num_threads, num_threads * sizeof(Arc<StateType>)>>>(
+            heaps_dev,
+            s_dev,
+            m_dev,
+            t,
+            SlidingPadExpandFunc());
+
+    NodeType nodes_cpu[num_threads * max_expansion];
+    NodeType* nodes_dev;
+    HANDLE_RESULT(cudaMalloc(&nodes_dev, num_threads * max_expansion * sizeof(NodeType)))
+
+    // extract nodes from pointers
+    extract_nodes<<<max_expansion, num_threads>>>(s_dev, nodes_dev);
+
+    HANDLE_RESULT(
+            cudaMemcpy(nodes_cpu, nodes_dev, num_threads * max_expansion * sizeof(NodeType), cudaMemcpyDeviceToHost))
+
+    HANDLE_RESULT(cudaFree(heaps_dev))
+    HANDLE_RESULT(cudaFree(s_dev))
+    HANDLE_RESULT(cudaFree(m_dev))
+
+    HANDLE_RESULT(cudaFree(nodes_dev))
+
+    // test <<< 1, 1 >>>(heap_dev, buf_dev);
+
     /*
-     * HeapType heap(1024);
-
-    HeapType* heap_dev;
-    HANDLE_RESULT(cudaMalloc(&heap_dev, sizeof(HeapType)))
-    HANDLE_RESULT(cudaMemcpy(heap_dev, &heap, sizeof(HeapType), cudaMemcpyHostToDevice))
-
-    unsigned* buf_dev;
-    HANDLE_RESULT(cudaMalloc(&buf_dev, 5 * sizeof(unsigned)))
-
-    test<< <1, 1> >>(heap_dev, buf_dev);
-
-    unsigned buf[5];
-    HANDLE_RESULT(cudaMemcpy(buf, buf_dev, 5 * sizeof(unsigned), cudaMemcpyDeviceToHost))
-     */
-
-
-    /*constexpr size_t thread_count = 1024;
+    constexpr size_t thread_count = 1024;
     constexpr size_t table_size = 1024 * 1024;
 
     HashtableType table(table_size);
@@ -245,9 +260,6 @@ int main(int argc, char** argv) {
     unsigned valueInDest;
     unsigned* valueInDest_dev;
     HANDLE_RESULT(cudaMalloc(&valueInDest_dev, sizeof(unsigned)));*/
-
-
-
 
     return 0;
 }

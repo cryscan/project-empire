@@ -10,7 +10,7 @@ class Heap {
 public:
     using StatePtr = Arc<State<Node, Value>>;
 
-    explicit Heap(size_t capacity) :
+    explicit Heap(size_t capacity = 1024) :
             capacity(capacity),
             size(0) {
         HANDLE_RESULT(cudaMalloc(&states, capacity * sizeof(StatePtr)))

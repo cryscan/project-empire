@@ -12,10 +12,10 @@ template<typename Node, typename Value, typename ExpandFunc>
 __global__ void extract_expand(Heap<Node, Value>* queues_dev,
                                Arc<State<Node, Value>>* s_dev,
                                Arc<State<Node, Value>>* m_dev,
-                               const Node& t,
-                               ExpandFunc expand) {
+                               Node t,
+                               ExpandFunc expand_func) {
     auto index = threadIdx.x;
-    __shared__ Arc<State<Node, Value>> buf[num_threads];
+    extern __shared__ Arc<State<Node, Value>> buf[];
 
     auto& queue = queues_dev[index];
 
@@ -25,7 +25,7 @@ __global__ void extract_expand(Heap<Node, Value>* queues_dev,
             buf[index] = std::move(q);
         } else {
             // expand the state list
-            expand(s_dev, q, t);
+            ExpandFunc()(s_dev, q, t);
         }
     }
 
