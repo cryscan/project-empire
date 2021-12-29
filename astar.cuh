@@ -44,7 +44,7 @@ __global__ void extract_expand(Heap<Node, Value>* queues_dev,
             } else if (a == nullptr) a = std::move(b);
         }
     }
-    return;
+    if (index == 0) *m_dev = std::move(buf[0]);
 }
 
 
