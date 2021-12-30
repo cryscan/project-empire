@@ -10,9 +10,7 @@ class Heap {
 public:
     using StatePtr = Arc<State<Node, Value>>;
 
-    explicit Heap(size_t capacity = 1024) :
-            capacity(capacity),
-            size(0) {
+    explicit Heap(size_t capacity = 1024) : size(0) {
         HANDLE_RESULT(cudaMalloc(&states, capacity * sizeof(StatePtr)))
         HANDLE_RESULT(cudaMemset(states, 0, capacity * sizeof(StatePtr)))
     }
@@ -34,12 +32,10 @@ public:
     }
 
     __device__ StatePtr pop() {
-        using std::move;
+        if (size == 0) return {};
 
-        if (size == 0) return StatePtr();
-
-        auto result = move(states[0]);
-        states[0] = move(states[size - 1]);
+        auto result = std::move(states[0]);
+        states[0] = std::move(states[size - 1]);
         --size;
 
         size_t current = 0;
@@ -61,13 +57,14 @@ public:
         return result;
     }
 
-    __device__ size_t get_size() const {
-        return size;
+    __device__ StatePtr top() const {
+        if (size == 0) return {};
+        return states[0];
     }
 
 private:
     StatePtr* states;
-    size_t capacity, size;
+    size_t size;
 
     __device__ size_t parent(size_t index) { return (index - 1) / 2; }
 

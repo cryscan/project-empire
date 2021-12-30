@@ -7,12 +7,6 @@
 #include "hashtable.cuh"
 #include "astar.cuh"
 
-using NodeType = uint64_t;
-using ValueType = unsigned int;
-using HeapType = Heap<NodeType, ValueType>;
-using StateType = State<NodeType, ValueType>;
-using HashtableType = Hashtable<NodeType, ValueType>;
-
 enum Direction {
     UP,
     RIGHT,
@@ -20,82 +14,95 @@ enum Direction {
     LEFT,
 };
 
+constexpr size_t num_heaps = 1024;
 constexpr size_t max_expansion = 4;
+constexpr size_t num_expanded_states = num_heaps * max_expansion;
 
-__device__ ValueType heuristic(NodeType s, NodeType t) {
-    return 0;
-}
+struct SlidingPad {
+    using Node = uint64_t;
+    using Value = unsigned int;
+    using Heap = Heap<Node, Value>;
+    using State = State<Node, Value>;
+    using StatePtr = Arc<State>;
+    using Hashtable = Hashtable<Node, Value>;
 
-// Write a specific expand function for the sliding pad nodes!
-// Can write other expand functions later, but with the same signature.
-__device__ Arc<StateType> expand_direction(const Arc<StateType>& state, NodeType t, Direction direction) {
-    /*  Board
-     *      0   1   2   3
-     *      4   5   6   7
-     *      8   9   10  11
-     *      12  13  14  15
-     *
-     *  Node
-     *      15  14  13  12  11  10  9   8   7   6   5   4   3   2   1   0
-     */
-    StateType current = *state;
-    NodeType filter = 0xf;
-    int x, y;
-    for (int i = 0; i < 16; i++) {
-        if ((current.node & filter) == 0) {
-            x = i / 4;
-            y = i % 4;
-            break;
+    static __device__ Value heuristic(Node s, Node t) {
+        Node filter = 0xf;
+        Value result = 0;
+        for (int i = 0; i < 16; ++i, filter <<= 4) {
+            auto x = (s & filter) >> (4 * i);
+            auto y = (t & filter) >> (4 * i);
+            result += x > y ? x - y : y - x;
         }
-        filter <<= 4;
+        return result;
     }
 
-    if (direction == UP && x > 0) {
-        // select the number on the upper row
-        auto selected = current.node & (filter >> 16);
-        StateType next;
-        next.node = (current.node | (selected << 16)) ^ selected;
-        next.g = current.g + 1;
-        next.f = next.g + heuristic(next.node, t);
-        next.prev = state;
-        return make_arc<StateType>(next);
+    static __device__ Arc<State> expand_direction(const Arc<State>& state, Node t, Direction direction) {
+        /*  Board
+         *      0   1   2   3
+         *      4   5   6   7
+         *      8   9   10  11
+         *      12  13  14  15
+         *
+         *  Node
+         *      15  14  13  12  11  10  9   8   7   6   5   4   3   2   1   0
+         */
+        State current = *state;
+        Node filter = 0xf;
+        int x, y;
+        for (int i = 0; i < 16; ++i, filter <<= 4) {
+            if ((current.node & filter) == 0) {
+                x = i / 4;
+                y = i % 4;
+                break;
+            }
+        }
+
+        if (direction == UP && x > 0) {
+            // select the number on the upper row
+            auto selected = current.node & (filter >> 16);
+            State next;
+            next.node = (current.node | (selected << 16)) ^ selected;
+            next.g = current.g + 1;
+            next.f = next.g + heuristic(next.node, t);
+            next.prev = state;
+            return make_arc<State>(next);
+        }
+
+        if (direction == DOWN && x < 3) {
+            auto selected = current.node & (filter << 16);
+            State next;
+            next.node = (current.node | (selected >> 16)) ^ selected;
+            next.g = current.g + 1;
+            next.f = next.g + heuristic(next.node, t);
+            next.prev = state;
+            return make_arc<State>(next);
+        }
+
+        if (direction == LEFT && y > 0) {
+            auto selected = current.node & (filter >> 4);
+            State next;
+            next.node = (current.node | (selected << 4)) ^ selected;
+            next.g = current.g + 1;
+            next.f = next.g + heuristic(next.node, t);
+            next.prev = state;
+            return make_arc<State>(next);
+        }
+
+        if (direction == RIGHT && y < 3) {
+            auto selected = current.node & (filter << 4);
+            State next;
+            next.node = (current.node | (selected >> 4)) ^ selected;
+            next.g = current.g + 1;
+            next.f = next.g + heuristic(next.node, t);
+            next.prev = state;
+            return make_arc<State>(next);
+        }
+
+        return {};
     }
 
-    if (direction == DOWN && x < 3) {
-        auto selected = current.node & (filter << 16);
-        StateType next;
-        next.node = (current.node | (selected >> 16)) ^ selected;
-        next.g = current.g + 1;
-        next.f = next.g + heuristic(next.node, t);
-        next.prev = state;
-        return make_arc<StateType>(next);
-    }
-
-    if (direction == LEFT && y > 0) {
-        auto selected = current.node & (filter >> 4);
-        StateType next;
-        next.node = (current.node | (selected << 4)) ^ selected;
-        next.g = current.g + 1;
-        next.f = next.g + heuristic(next.node, t);
-        next.prev = state;
-        return make_arc<StateType>(next);
-    }
-
-    if (direction == RIGHT && y < 3) {
-        auto selected = current.node & (filter << 4);
-        StateType next;
-        next.node = (current.node | (selected >> 4)) ^ selected;
-        next.g = current.g + 1;
-        next.f = next.g + heuristic(next.node, t);
-        next.prev = state;
-        return make_arc<StateType>(next);
-    }
-
-    return {};
-}
-
-struct SlidingPadExpandFunc {
-    __device__ void operator()(Arc<StateType>* s_dev, const Arc<StateType>& state, NodeType t) {
+    static __device__ void expand(Arc<State>* s_dev, const Arc<State>& state, Node t) {
         auto index = blockIdx.x * blockDim.x + threadIdx.x;
         for (auto d: {UP, RIGHT, DOWN, LEFT}) {
             s_dev[index * max_expansion + d] = expand_direction(state, t, d);
@@ -103,12 +110,13 @@ struct SlidingPadExpandFunc {
     }
 };
 
-__global__ void test(HeapType* heap_dev, unsigned* buf) {
-    auto s1 = make_arc<StateType>();
-    auto s2 = make_arc<StateType>();
-    auto s3 = make_arc<StateType>();
-    auto s4 = make_arc<StateType>();
-    auto s5 = make_arc<StateType>();
+/*
+__global__ void test(Heap* heap_dev, unsigned* buf) {
+    auto s1 = make_arc<State>();
+    auto s2 = make_arc<State>();
+    auto s3 = make_arc<State>();
+    auto s4 = make_arc<State>();
+    auto s5 = make_arc<State>();
 
     s1->f = 2;
     s2->f = 1;
@@ -129,12 +137,11 @@ __global__ void test(HeapType* heap_dev, unsigned* buf) {
     buf[4] = heap_dev->pop()->f;
 }
 
-
 __global__ void test_hash(HashtableType* table_dev) {
     size_t index = threadIdx.x + blockIdx.x * blockDim.x;
 
     auto key = index;
-    auto value = make_arc<StateType>();
+    auto value = make_arc<State>();
     value->node = key;
     table_dev->insert(key, value);
 }
@@ -143,66 +150,69 @@ __global__ void test_hash_find(HashtableType* table_dev, uint64_t* buf_dev, bool
     size_t index = threadIdx.x + blockIdx.x * blockDim.x;
     auto key = index;
 
-    Arc<StateType> result;
+    Arc<State> result;
     if (index == 42) key = 1000;
     bool_dev[index] = table_dev->find(key, result);
     if (result) buf_dev[index] = result->node;
 }
+ */
 
-__global__ void init_heaps(HeapType* heaps_dev, NodeType s, NodeType t) {
-    StateType state;
+template<typename Game>
+__global__ void init_heaps(typename Game::Heap* heaps_dev, typename Game::Node s, typename Game::Node t) {
+    typename Game::State state;
     state.node = s;
     state.g = 0;
-    state.f = heuristic(s, t);
-    heaps_dev[0].push(make_arc<StateType>(state));
+    state.f = Game::heuristic(s, t);
+    heaps_dev[0].push(make_arc<typename Game::State>(state));
 }
 
-__global__ void extract_nodes(Arc<StateType>* s_dev, NodeType* nodes_dev) {
+template<typename Game>
+__global__ void extract_nodes(Arc<typename Game::State>* s_dev, typename Game::Node* nodes_dev) {
     auto index = blockIdx.x * blockDim.x + threadIdx.x;
     nodes_dev[index] = s_dev[index] ? s_dev[index]->node : 0;
 }
 
 int main(int argc, char** argv) {
-    std::vector<HeapType> heaps(num_threads);
+    using Game = SlidingPad;
 
-    HeapType* heaps_dev;
-    HANDLE_RESULT(cudaMalloc(&heaps_dev, num_threads * sizeof(HeapType)))
-    HANDLE_RESULT(cudaMemcpy(heaps_dev, heaps.data(), num_threads * sizeof(HeapType), cudaMemcpyHostToDevice))
+    std::vector<Game::Heap> heaps(num_heaps);
 
-    Arc<StateType>* s_dev;
-    HANDLE_RESULT(cudaMalloc(&s_dev, num_threads * max_expansion * sizeof(Arc<StateType>)))
-    HANDLE_RESULT(cudaMemset(s_dev, 0, num_threads * max_expansion * sizeof(Arc<StateType>)))
+    Game::Heap* heaps_dev;
+    HANDLE_RESULT(cudaMalloc(&heaps_dev, num_heaps * sizeof(Game::Heap)))
+    HANDLE_RESULT(cudaMemcpy(heaps_dev, heaps.data(), num_heaps * sizeof(Game::Heap), cudaMemcpyHostToDevice))
 
-    Arc<StateType>* m_dev;
-    HANDLE_RESULT(cudaMalloc(&m_dev, sizeof(Arc<StateType>)))
+    Game::StatePtr* s_dev;
+    HANDLE_RESULT(cudaMalloc(&s_dev, num_expanded_states * sizeof(Game::StatePtr)))
+    HANDLE_RESULT(cudaMemset(s_dev, 0, num_expanded_states * sizeof(Game::StatePtr)))
+
+    Game::StatePtr* m_dev;
+    HANDLE_RESULT(cudaMalloc(&m_dev, sizeof(Game::StatePtr)))
 
     // test section
     // test function here
-    NodeType s = 0xfedcba9876543210;
-    NodeType t = 0x0123456789abcdef;
+    Game::Node s = 0xfedcba9876543210;
+    Game::Node t = 0x0123456789abcdef;
 
-    init_heaps<<<1, 1>>>(heaps_dev, s, t);
-    extract_expand<<<1, num_threads, num_threads * sizeof(Arc<StateType>)>>>(
+    init_heaps<Game><<<1, 1>>>(heaps_dev, s, t);
+    extract_expand<Game><<<1, num_heaps, num_heaps * sizeof(Game::StatePtr)>>>(
             heaps_dev,
             s_dev,
             m_dev,
-            t,
-            SlidingPadExpandFunc());
+            t);
 
-    NodeType nodes_cpu[num_threads * max_expansion];
-    NodeType* nodes_dev;
-    HANDLE_RESULT(cudaMalloc(&nodes_dev, num_threads * max_expansion * sizeof(NodeType)))
+    Game::Node nodes_cpu[num_expanded_states];
+    Game::Node* nodes_dev;
+    HANDLE_RESULT(cudaMalloc(&nodes_dev, num_expanded_states * sizeof(Game::Node)))
 
     // extract nodes from pointers
-    extract_nodes<<<max_expansion, num_threads>>>(s_dev, nodes_dev);
+    extract_nodes<Game><<<max_expansion, num_heaps>>>(s_dev, nodes_dev);
 
     HANDLE_RESULT(
-            cudaMemcpy(nodes_cpu, nodes_dev, num_threads * max_expansion * sizeof(NodeType), cudaMemcpyDeviceToHost))
+            cudaMemcpy(nodes_cpu, nodes_dev, num_expanded_states * sizeof(Game::Node), cudaMemcpyDeviceToHost))
 
     HANDLE_RESULT(cudaFree(heaps_dev))
     HANDLE_RESULT(cudaFree(s_dev))
     HANDLE_RESULT(cudaFree(m_dev))
-
     HANDLE_RESULT(cudaFree(nodes_dev))
 
     // test <<< 1, 1 >>>(heap_dev, buf_dev);
@@ -247,10 +257,10 @@ int main(int argc, char** argv) {
 
 
     /*constexpr uint64_t HEAP_CAPACITY = 1024;
-    HeapType h(HEAP_CAPACITY);
-    HeapType* h_dev;
-    HANDLE_RESULT(cudaMalloc(&h_dev, sizeof(HeapType)))
-    HANDLE_RESULT(cudaMemcpy(h_dev, &h, sizeof(HeapType), cudaMemcpyHostToDevice))
+    Heap h(HEAP_CAPACITY);
+    Heap* h_dev;
+    HANDLE_RESULT(cudaMalloc(&h_dev, sizeof(Heap)))
+    HANDLE_RESULT(cudaMemcpy(h_dev, &h, sizeof(Heap), cudaMemcpyHostToDevice))
 
 
     uint64_t nodesInS[Directions::Direction::NUM_DIRECTIONS];

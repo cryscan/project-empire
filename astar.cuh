@@ -6,33 +6,33 @@
 #include "heap.cuh"
 #include "common.cuh"
 
-constexpr size_t num_threads = 1024;
-
-template<typename Node, typename Value, typename ExpandFunc>
-__global__ void extract_expand(Heap<Node, Value>* queues_dev,
-                               Arc<State<Node, Value>>* s_dev,
-                               Arc<State<Node, Value>>* m_dev,
-                               Node t,
-                               ExpandFunc expand_func) {
+template<typename Game>
+__global__ void extract_expand(typename Game::Heap* heaps_dev,
+                               Arc<typename Game::State>* s_dev,
+                               Arc<typename Game::State>* m_dev,
+                               typename Game::Node t) {
+    auto global_index = blockIdx.x * blockDim.x + threadIdx.x;
+    auto block_index = blockIdx.x;
     auto index = threadIdx.x;
-    extern __shared__ Arc<State<Node, Value>> buf[];
 
-    auto& queue = queues_dev[index];
+    extern __shared__ typename Game::StatePtr buf[];
 
-    if (auto q = queue.pop()) {
+    auto& heap = heaps_dev[global_index];
+
+    if (auto q = heap.pop()) {
         if (q->node == t) {
             // push candidate
             buf[index] = std::move(q);
         } else {
             // expand the state list
-            ExpandFunc()(s_dev, q, t);
+            Game::expand(s_dev, q, t);
         }
     }
 
     __syncthreads();
 
     // get the best target state
-    auto i = num_threads;
+    auto i = blockDim.x;
     while (i > 1) {
         i >>= 1;
         if (index < i) {
@@ -44,7 +44,7 @@ __global__ void extract_expand(Heap<Node, Value>* queues_dev,
             } else if (a == nullptr) a = std::move(b);
         }
     }
-    if (index == 0) *m_dev = std::move(buf[0]);
+    if (index == 0) m_dev[block_index] = std::move(buf[0]);
 }
 
 
