@@ -171,7 +171,7 @@ __global__ void extract_nodes(Arc<typename Game::State>* s_dev, typename Game::N
 int main(int argc, char** argv) {
     using Game = SlidingPad;
 
-    std::vector <Game::Heap> heaps(num_heaps);
+    std::vector<Game::Heap> heaps(num_heaps);
 
     Game::Heap* heaps_dev;
     HANDLE_RESULT(cudaMalloc(&heaps_dev, num_heaps * sizeof(Game::Heap)))
@@ -184,9 +184,9 @@ int main(int argc, char** argv) {
     Game::StatePtr* m_dev;
     HANDLE_RESULT(cudaMalloc(&m_dev, sizeof(Game::StatePtr)))
 
-    bool fin;
-    bool* fin_dev;
-    HANDLE_RESULT(cudaMalloc(&fin_dev, sizeof(bool)))
+    bool found;
+    bool* found_dev;
+    HANDLE_RESULT(cudaMalloc(&found_dev, sizeof(bool)))
 
     Game::Node s = 0xfedcba9876543210;
     Game::Node t = 0x0123456789abcdef;
@@ -197,8 +197,9 @@ int main(int argc, char** argv) {
             s_dev,
             m_dev,
             t);
+    compare_heap_best<Game><<<1, num_heaps, num_heaps * sizeof(Game::StatePtr)>>>(heaps_dev, m_dev, found_dev);
 
-    HANDLE_RESULT(cudaMemcpy(&fin, fin_dev, sizeof(bool), cudaMemcpyDeviceToHost))
+    HANDLE_RESULT(cudaMemcpy(&found, found_dev, sizeof(bool), cudaMemcpyDeviceToHost))
 
     Game::Node nodes_cpu[num_expanded_states];
     Game::Node* nodes_dev;
@@ -210,13 +211,10 @@ int main(int argc, char** argv) {
     HANDLE_RESULT(
             cudaMemcpy(nodes_cpu, nodes_dev, num_expanded_states * sizeof(Game::Node), cudaMemcpyDeviceToHost))
 
-    size_t s_cpu[2 * num_expanded_states];
-    HANDLE_RESULT(cudaMemcpy(s_cpu, s_dev, num_expanded_states * sizeof(Game::StatePtr), cudaMemcpyDeviceToHost))
-
     HANDLE_RESULT(cudaFree(heaps_dev))
     HANDLE_RESULT(cudaFree(s_dev))
     HANDLE_RESULT(cudaFree(m_dev))
-    HANDLE_RESULT(cudaFree(fin_dev))
+    HANDLE_RESULT(cudaFree(found_dev))
     HANDLE_RESULT(cudaFree(nodes_dev))
 
     // test <<< 1, 1 >>>(heap_dev, buf_dev);

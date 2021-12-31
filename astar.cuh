@@ -8,8 +8,8 @@
 
 template<typename Game>
 __global__ void extract_expand(typename Game::Heap* heaps_dev,
-                               Arc<typename Game::State>* s_dev,
-                               Arc<typename Game::State>* m_dev,
+                               typename Game::StatePtr* s_dev,
+                               typename Game::StatePtr* m_dev,
                                typename Game::Node t) {
     extern __shared__ typename Game::StatePtr buf[];
 
@@ -46,10 +46,20 @@ __global__ void extract_expand(typename Game::Heap* heaps_dev,
         current_best = std::move(buf[0]);
         *m_dev = current_best;
     }
+}
 
-    // get the best in the heaps
+template<typename Game>
+__global__ void compare_heap_best(typename Game::Heap* heaps_dev,
+                                  typename Game::StatePtr* m_dev,
+                                  bool* found_dev) {
+    extern __shared__ typename Game::StatePtr buf[];
 
-    /*
+    auto index = threadIdx.x;
+    if (index >= num_heaps) return;
+    auto& heap = heaps_dev[index];
+
+    buf[index] = heap.data()[0];
+
     for (auto i = blockDim.x; i > 1;) {
         i >>= 1;
         if (index < i) {
@@ -64,14 +74,8 @@ __global__ void extract_expand(typename Game::Heap* heaps_dev,
     typename Game::StatePtr heap_best;
     if (index == 0) {
         heap_best = std::move(buf[0]);
-        *fin_dev = current_best && heap_best && current_best->f <= heap_best->f;
+        *found_dev = *m_dev && heap_best && (*m_dev)->f <= heap_best->f;
     }
-     */
-}
-
-template<typename T>
-__global__ void found_best() {
-
 }
 
 
