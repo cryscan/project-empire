@@ -2,21 +2,11 @@
 #include <iostream>
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
+
 #include "common.cuh"
 #include "heap.cuh"
 #include "hashtable.cuh"
 #include "astar.cuh"
-
-enum Direction {
-    UP,
-    RIGHT,
-    DOWN,
-    LEFT,
-};
-
-constexpr size_t num_heaps = 1024;
-constexpr size_t max_expansion = 4;
-constexpr size_t num_expanded_states = num_heaps * max_expansion;
 
 struct SlidingPad {
     using Node = uint64_t;
@@ -25,6 +15,13 @@ struct SlidingPad {
     using State = State<Node, Value>;
     using StatePtr = Arc<State>;
     using Hashtable = Hashtable<Node, Value>;
+
+    enum Direction {
+        UP = 0,
+        RIGHT,
+        DOWN,
+        LEFT,
+    };
 
     static __device__ Value heuristic(Node s, Node t) {
         Node filter = 0xf;
@@ -37,7 +34,7 @@ struct SlidingPad {
         return result;
     }
 
-    static __device__ Arc<State> expand_direction(const Arc<State>& state, Node t, Direction direction) {
+    static __device__ StatePtr expand_direction(const StatePtr& state, Node t, Direction direction) {
         /*  Board
          *      0   1   2   3
          *      4   5   6   7
@@ -59,12 +56,11 @@ struct SlidingPad {
         }
 
         if (direction == UP && x > 0) {
-            // select the number on the upper row
             auto selected = current.node & (filter >> 16);
             State next;
             next.node = (current.node | (selected << 16)) ^ selected;
             next.g = current.g + 1;
-            next.f = next.g + heuristic(next.node, t);
+            // next.f = next.g + heuristic(next.node, t);
             next.prev = state;
             return make_arc<State>(next);
         }
@@ -74,7 +70,7 @@ struct SlidingPad {
             State next;
             next.node = (current.node | (selected >> 16)) ^ selected;
             next.g = current.g + 1;
-            next.f = next.g + heuristic(next.node, t);
+            // next.f = next.g + heuristic(next.node, t);
             next.prev = state;
             return make_arc<State>(next);
         }
@@ -84,7 +80,7 @@ struct SlidingPad {
             State next;
             next.node = (current.node | (selected << 4)) ^ selected;
             next.g = current.g + 1;
-            next.f = next.g + heuristic(next.node, t);
+            // next.f = next.g + heuristic(next.node, t);
             next.prev = state;
             return make_arc<State>(next);
         }
@@ -94,7 +90,7 @@ struct SlidingPad {
             State next;
             next.node = (current.node | (selected >> 4)) ^ selected;
             next.g = current.g + 1;
-            next.f = next.g + heuristic(next.node, t);
+            // next.f = next.g + heuristic(next.node, t);
             next.prev = state;
             return make_arc<State>(next);
         }
@@ -102,7 +98,7 @@ struct SlidingPad {
         return {};
     }
 
-    static __device__ void expand(Arc<State>* s_dev, const Arc<State>& state, Node t) {
+    static __device__ void expand(StatePtr* s_dev, const StatePtr& state, Node t) {
         auto index = blockIdx.x * blockDim.x + threadIdx.x;
         for (auto d: {UP, RIGHT, DOWN, LEFT}) {
             s_dev[index * max_expansion + d] = expand_direction(state, t, d);
@@ -175,7 +171,7 @@ __global__ void extract_nodes(Arc<typename Game::State>* s_dev, typename Game::N
 int main(int argc, char** argv) {
     using Game = SlidingPad;
 
-    std::vector<Game::Heap> heaps(num_heaps);
+    std::vector <Game::Heap> heaps(num_heaps);
 
     Game::Heap* heaps_dev;
     HANDLE_RESULT(cudaMalloc(&heaps_dev, num_heaps * sizeof(Game::Heap)))
@@ -188,8 +184,10 @@ int main(int argc, char** argv) {
     Game::StatePtr* m_dev;
     HANDLE_RESULT(cudaMalloc(&m_dev, sizeof(Game::StatePtr)))
 
-    // test section
-    // test function here
+    bool fin;
+    bool* fin_dev;
+    HANDLE_RESULT(cudaMalloc(&fin_dev, sizeof(bool)))
+
     Game::Node s = 0xfedcba9876543210;
     Game::Node t = 0x0123456789abcdef;
 
@@ -199,6 +197,8 @@ int main(int argc, char** argv) {
             s_dev,
             m_dev,
             t);
+
+    HANDLE_RESULT(cudaMemcpy(&fin, fin_dev, sizeof(bool), cudaMemcpyDeviceToHost))
 
     Game::Node nodes_cpu[num_expanded_states];
     Game::Node* nodes_dev;
@@ -210,9 +210,13 @@ int main(int argc, char** argv) {
     HANDLE_RESULT(
             cudaMemcpy(nodes_cpu, nodes_dev, num_expanded_states * sizeof(Game::Node), cudaMemcpyDeviceToHost))
 
+    size_t s_cpu[2 * num_expanded_states];
+    HANDLE_RESULT(cudaMemcpy(s_cpu, s_dev, num_expanded_states * sizeof(Game::StatePtr), cudaMemcpyDeviceToHost))
+
     HANDLE_RESULT(cudaFree(heaps_dev))
     HANDLE_RESULT(cudaFree(s_dev))
     HANDLE_RESULT(cudaFree(m_dev))
+    HANDLE_RESULT(cudaFree(fin_dev))
     HANDLE_RESULT(cudaFree(nodes_dev))
 
     // test <<< 1, 1 >>>(heap_dev, buf_dev);

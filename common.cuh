@@ -9,20 +9,20 @@
 
 #define HANDLE_RESULT(expr) {cudaError_t _asdf__err; if ((_asdf__err = expr) != cudaSuccess) { printf("cuda call failed at %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(_asdf__err)); exit(1);}}
 
+constexpr size_t num_heaps = 1024;
+constexpr size_t max_expansion = 4;
+constexpr size_t num_expanded_states = num_heaps * max_expansion;
+
 template<typename Node, typename Value>
 struct State;
 
 template<typename T>
 class Arc {
     T* ptr;
-    unsigned int* ref_count;
-
-    __device__ bool decrease_ref_count() {
-        return ptr && ref_count && (atomicSub(ref_count, 1) == 1);
-    }
+    int* ref_count;
 
     __device__ void decrease_and_free() {
-        if (decrease_ref_count()) {
+        if (ptr && ref_count && (atomicSub(ref_count, 1) == 1)) {
             delete ref_count;
             delete ptr;
         }
@@ -36,7 +36,7 @@ public:
     __device__ Arc() : ptr(nullptr), ref_count(nullptr) {}
 
     __device__ explicit Arc(T* ptr) : ptr(ptr), ref_count(nullptr) {
-        if (ptr) ref_count = new unsigned int(1);
+        if (ptr) ref_count = new int(1);
     }
 
     __device__ ~Arc() {
@@ -108,12 +108,9 @@ __device__ void swap(Arc<T>& a, Arc<T>& b) {
 template<typename Node, typename Value>
 struct State {
     Node node;
-    Value g, f;
+    Value g;
+    Value f;
     Arc<State<Node, Value>> prev;
-
-    __device__ bool operator<(const State& other) const {
-        return f < other.f;
-    }
 };
 
 #endif //PROJECT_EMPIRE_COMMON_CUH

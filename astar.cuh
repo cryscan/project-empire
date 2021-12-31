@@ -11,13 +11,11 @@ __global__ void extract_expand(typename Game::Heap* heaps_dev,
                                Arc<typename Game::State>* s_dev,
                                Arc<typename Game::State>* m_dev,
                                typename Game::Node t) {
-    auto global_index = blockIdx.x * blockDim.x + threadIdx.x;
-    auto block_index = blockIdx.x;
-    auto index = threadIdx.x;
-
     extern __shared__ typename Game::StatePtr buf[];
 
-    auto& heap = heaps_dev[global_index];
+    auto index = threadIdx.x;
+    if (index >= num_heaps) return;
+    auto& heap = heaps_dev[index];
 
     if (auto q = heap.pop()) {
         if (q->node == t) {
@@ -26,25 +24,54 @@ __global__ void extract_expand(typename Game::Heap* heaps_dev,
         } else {
             // expand the state list
             Game::expand(s_dev, q, t);
+            // s_dev[index] = std::move(q);
         }
     }
 
     __syncthreads();
 
     // get the best target state
-    auto i = blockDim.x;
-    while (i > 1) {
+    for (auto i = blockDim.x; i > 1;) {
         i >>= 1;
         if (index < i) {
             auto& a = buf[index];
             auto& b = buf[index + i];
-            if (a && b) {
-                // a <- min(a, b)
-                if (b->f < a->f) a = std::move(b);
-            } else if (a == nullptr) a = std::move(b);
+            // a <- min(a, b)
+            if ((a && b && b->f < a->f) || !a) a = std::move(b);
         }
+        __syncthreads();
     }
-    if (index == 0) m_dev[block_index] = std::move(buf[0]);
+    typename Game::StatePtr current_best;
+    if (index == 0) {
+        current_best = std::move(buf[0]);
+        *m_dev = current_best;
+    }
+
+    // get the best in the heaps
+
+    /*
+    for (auto i = blockDim.x; i > 1;) {
+        i >>= 1;
+        if (index < i) {
+            auto& a = buf[index];
+            auto& b = buf[index + i];
+            // a <- min(a, b)
+            if ((a && b && b->f < a->f) || !a) a = std::move(b);
+        }
+        __syncthreads();
+    }
+
+    typename Game::StatePtr heap_best;
+    if (index == 0) {
+        heap_best = std::move(buf[0]);
+        *fin_dev = current_best && heap_best && current_best->f <= heap_best->f;
+    }
+     */
+}
+
+template<typename T>
+__global__ void found_best() {
+
 }
 
 

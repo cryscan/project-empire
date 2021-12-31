@@ -24,7 +24,7 @@ public:
 
         states[size] = move(state);
         auto current = size;
-        while (current > 0 && *states[current] < *states[parent(current)]) {
+        while (current > 0 && states[current]->f < states[parent(current)]->f) {
             swap(states[current], states[parent(current)]);
             current = parent(current);
         }
@@ -43,11 +43,11 @@ public:
             auto smallest = current;
 
             auto child = left_child(current);
-            if (child < size && *states[child] < *states[smallest])
+            if (child < size && states[child]->f < states[smallest]->f)
                 smallest = child;
 
             child = right_child(current);
-            if (child < size && *states[child] < *states[smallest])
+            if (child < size && states[child]->f < states[smallest]->f)
                 smallest = child;
 
             if (smallest == current) break;
@@ -57,10 +57,7 @@ public:
         return result;
     }
 
-    __device__ StatePtr top() const {
-        if (size == 0) return {};
-        return states[0];
-    }
+    __device__ StatePtr* data() const { return states; }
 
 private:
     StatePtr* states;
