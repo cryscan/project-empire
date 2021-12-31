@@ -154,12 +154,13 @@ __global__ void test_hash_find(HashtableType* table_dev, uint64_t* buf_dev, bool
  */
 
 template<typename Game>
-__global__ void init_heaps(typename Game::Heap* heaps_dev, typename Game::Node s, typename Game::Node t) {
+__global__ void
+init_heaps(typename Game::Heap* heaps_dev, typename Game::Node s, typename Game::Node t, size_t index = 0) {
     typename Game::State state;
     state.node = s;
     state.g = 0;
     state.f = Game::heuristic(s, t);
-    heaps_dev[0].push(make_arc<typename Game::State>(state));
+    heaps_dev[index].push(make_arc<typename Game::State>(state));
 }
 
 template<typename Game>

@@ -13,9 +13,12 @@ __global__ void extract_expand(typename Game::Heap* heaps_dev,
                                typename Game::Node t) {
     extern __shared__ typename Game::StatePtr buf[];
 
+    auto global_index = blockIdx.x * blockDim.x + threadIdx.x;
+    auto block_index = blockIdx.x;
     auto index = threadIdx.x;
-    if (index >= num_heaps) return;
-    auto& heap = heaps_dev[index];
+
+    if (global_index >= num_heaps) return;
+    auto& heap = heaps_dev[global_index];
 
     if (auto q = heap.pop()) {
         if (q->node == t) {
@@ -41,10 +44,17 @@ __global__ void extract_expand(typename Game::Heap* heaps_dev,
         }
         __syncthreads();
     }
-    typename Game::StatePtr current_best;
-    if (index == 0) {
-        current_best = std::move(buf[0]);
-        *m_dev = current_best;
+
+    if (index == 0) m_dev[block_index] = std::move(buf[0]);
+
+    __syncthreads();
+
+    if (global_index == 0) {
+        for (auto i = 1u; i < gridDim.x; ++i) {
+            auto& a = m_dev[0];
+            auto& b = m_dev[i];
+            if ((a && b && b->f < a->f) || !a) a = std::move(b);
+        }
     }
 }
 
@@ -54,9 +64,11 @@ __global__ void compare_heap_best(typename Game::Heap* heaps_dev,
                                   bool* found_dev) {
     extern __shared__ typename Game::StatePtr buf[];
 
+    auto global_index = blockIdx.x * blockDim.x + threadIdx.x;
+    auto block_index = blockIdx.x;
     auto index = threadIdx.x;
-    if (index >= num_heaps) return;
-    auto& heap = heaps_dev[index];
+    if (global_index >= num_heaps) return;
+    auto& heap = heaps_dev[global_index];
 
     buf[index] = heap.data()[0];
 
@@ -71,11 +83,23 @@ __global__ void compare_heap_best(typename Game::Heap* heaps_dev,
         __syncthreads();
     }
 
-    typename Game::StatePtr heap_best;
     if (index == 0) {
-        heap_best = std::move(buf[0]);
-        *found_dev = *m_dev && heap_best && (*m_dev)->f <= heap_best->f;
+        auto b = std::move(buf[0]);
+        found_dev[block_index] = m_dev[0] && ((b && m_dev[0]->f <= b->f) || !b);
     }
+
+    __syncthreads();
+
+    if (global_index == 0) {
+        for (auto i = 1u; i < gridDim.x; ++i) {
+            found_dev[0] = found_dev[0] || found_dev[i];
+        }
+    }
+}
+
+template<typename Game>
+__global__ void remove_duplication(typename Game::Hashtable* hashtable_dev) {
+
 }
 
 

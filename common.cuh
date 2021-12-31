@@ -21,6 +21,8 @@ class Arc {
     T* ptr;
     int* ref_count;
 
+    __device__ Arc(T* ptr, int* ref_count) : ptr(ptr), ref_count(ref_count) {}
+
     __device__ void decrease_and_free() {
         if (ptr && ref_count && (atomicSub(ref_count, 1) == 1)) {
             delete ref_count;
@@ -49,7 +51,7 @@ public:
 
     __device__ Arc& operator=(const Arc& other) {
         if (&other != this) {
-            decrease_and_free();
+            Arc temp(ptr, ref_count);
 
             ptr = other.ptr;
             ref_count = other.ref_count;
@@ -66,7 +68,7 @@ public:
 
     __device__ Arc& operator=(Arc&& other) noexcept {
         if (&other != this) {
-            decrease_and_free();
+            Arc temp(ptr, ref_count);
 
             ptr = other.ptr;
             ref_count = other.ref_count;
