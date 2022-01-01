@@ -2,7 +2,7 @@
 #define PROJECT_EMPIRE_HASHTABLE_CUH
 
 // #include "hashtable.cu"
-#include "common.h"
+#include "common.cuh"
 #include <cstdlib>
 #include <device_atomic_functions.h>
 
@@ -23,36 +23,32 @@ public:
         HANDLE_RESULT(cudaFree(locks))
     }
 
-    __device__ void insert(Node& key, StatePtr& state_ptr) {
+    __device__ void insert(Node& key, const StatePtr& state_ptr) {
         size_t slot = hash(key, threadIdx.x % 32);
         while (atomicExch(&locks[slot], 1) == 1);
         states[slot] = state_ptr;
         atomicExch(&locks[slot], 0);
     }
 
-    __device__ bool find(const Node& key, StatePtr& output) {
+    __device__ StatePtr find(const Node& key) const {
         // step1: hash
         size_t slot = hash(key, threadIdx.x % 32);
 
         // step2: check initial & check node == key
-        // StatePtr* target = states + slot;
-
-        if (states[slot] == nullptr) return false;
-        if (states[slot]->node != key) return false;
+        auto ptr = states[slot];
+        if (ptr == nullptr) return {};
+        if (ptr->node != key) return {};
 
         // step3: if found, update output
-        output = states[slot];
-
-        return true;
+        return ptr;
     }
-
 
 private:
     size_t capacity;
     StatePtr* states;
     int* locks;
 
-    __device__ size_t hash(Node key, int index) {
+    __device__ size_t hash(Node key, unsigned int index) const {
         size_t hashed = 0;
         {
             uint32_t temp = key;
