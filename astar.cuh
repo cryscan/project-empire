@@ -7,10 +7,23 @@
 #include "common.cuh"
 
 template<typename Game>
+__global__ void
+init_heaps(typename Game::Heap* heaps_dev,
+           typename Game::Node* start_dev,
+           typename Game::Node* target_dev,
+           size_t index = 0) {
+    typename Game::State state;
+    state.node = *start_dev;
+    state.g = 0;
+    state.f = Game::heuristic(*start_dev, *target_dev);
+    heaps_dev[index].push(make_arc<typename Game::State>(state));
+}
+
+template<typename Game>
 __global__ void extract_expand(typename Game::Heap* heaps_dev,
                                typename Game::StatePtr* s_dev,
                                typename Game::StatePtr* m_dev,
-                               typename Game::Node t) {
+                               typename Game::Node* target_dev) {
     extern __shared__ typename Game::StatePtr buf[];
 
     auto global_index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -21,12 +34,12 @@ __global__ void extract_expand(typename Game::Heap* heaps_dev,
     auto& heap = heaps_dev[global_index];
 
     if (auto q = heap.pop()) {
-        if (q->node == t) {
+        if (q->node == *target_dev) {
             // push candidate
             buf[index] = std::move(q);
         } else {
             // expand the state list
-            Game::expand(s_dev, q, t);
+            Game::expand(s_dev, q, *target_dev);
             // s_dev[index] = std::move(q);
         }
     }
@@ -98,8 +111,42 @@ __global__ void compare_heap_best(typename Game::Heap* heaps_dev,
 }
 
 template<typename Game>
-__global__ void remove_duplication(typename Game::Hashtable* hashtable_dev) {
+__global__ void remove_duplication(typename Game::Hashtable* hashtable_dev,
+                                   typename Game::StatePtr* s_dev,
+                                   typename Game::StatePtr* t_dev) {
+    auto& hashtable = *hashtable_dev;
+    auto index = blockIdx.x * blockDim.x + threadIdx.x;
 
+    if (auto& ptr = s_dev[index]) {
+        auto state = *ptr;
+        auto result = hashtable.find(state.node);
+
+        // not found or is superior to
+        if (!result || result->g >= state.g) {
+            t_dev[index] = std::move(ptr);
+        }
+    }
+}
+
+template<class Game>
+__global__ void reinsert(typename Game::Hashtable* hashtable_dev,
+                         typename Game::Heap* heaps_dev,
+                         typename Game::StatePtr* t_dev,
+                         typename Game::Node* target_dev) {
+    auto& hashtable = *hashtable_dev;
+
+    auto index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index >= num_heaps) return;
+    auto& heap = heaps_dev[index];
+
+    for (auto i = index; i < num_expanded_states; i += num_heaps) {
+        if (auto& ptr = t_dev[i]) {
+            auto state = *ptr;
+            hashtable.insert(state.node, ptr);
+            ptr->f = state.g + Game::heuristic(state.node, *target_dev);
+            heap.push(ptr);
+        }
+    }
 }
 
 

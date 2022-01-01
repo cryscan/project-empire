@@ -115,4 +115,11 @@ struct State {
     Arc<State<Node, Value>> prev;
 };
 
+template<typename Node, typename Value>
+struct SerializedState {
+    Node node;
+    Value g;
+    Value f;
+};
+
 #endif //PROJECT_EMPIRE_COMMON_CUH

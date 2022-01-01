@@ -5,12 +5,14 @@
 #ifndef PROJECT_EMPIRE_HEAP_CUH
 #define PROJECT_EMPIRE_HEAP_CUH
 
+#include <cassert>
+
 template<typename Node, typename Value>
 class Heap {
 public:
     using StatePtr = Arc<State<Node, Value>>;
 
-    explicit Heap(size_t capacity = 1024) : size(0) {
+    explicit Heap(size_t capacity = 1024) : size(0), capacity(capacity) {
         HANDLE_RESULT(cudaMalloc(&states, capacity * sizeof(StatePtr)))
         HANDLE_RESULT(cudaMemset(states, 0, capacity * sizeof(StatePtr)))
     }
@@ -19,10 +21,10 @@ public:
         HANDLE_RESULT(cudaFree(states))
     }
 
-    __device__ void push(StatePtr state) {
-        using std::move;
+    __device__ void push(const StatePtr& state) {
+        assert(size <= capacity);
 
-        states[size] = move(state);
+        states[size] = state;
         auto current = size;
         while (current > 0 && states[current]->f < states[parent(current)]->f) {
             swap(states[current], states[parent(current)]);
@@ -61,7 +63,7 @@ public:
 
 private:
     StatePtr* states;
-    size_t size;
+    size_t size, capacity;
 
     __device__ size_t parent(size_t index) { return (index - 1) / 2; }
 
