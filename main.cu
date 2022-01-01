@@ -205,31 +205,37 @@ int main(int argc, char** argv) {
     HANDLE_RESULT(cudaMemcpy(target_dev, &target, sizeof(Game::Node), cudaMemcpyHostToDevice))
 
     init_heaps<Game><<<1, 1>>>(heaps_dev, start_dev, target_dev);
+    HANDLE_RESULT(cudaGetLastError())
 
-    for (int i = 0; i < 10; ++i) {
+    for (int i = 0; i < 4; ++i) {
         extract_expand<Game><<<num_heaps / 1024, num_heaps, num_heaps * sizeof(Game::StatePtr)>>>(
                 heaps_dev,
                 s_dev,
                 m_dev,
                 target_dev);
+        HANDLE_RESULT(cudaGetLastError())
+
         compare_heap_best<Game><<<num_heaps / 1024, num_heaps, num_heaps * sizeof(Game::StatePtr)>>>(
                 heaps_dev,
                 m_dev,
                 found_dev);
+        HANDLE_RESULT(cudaGetLastError())
 
-        remove_duplication<Game><<<max_expansion, num_heaps>>>(hashtable_dev, s_dev, t_dev);
         HANDLE_RESULT(cudaMemcpy(&found, found_dev, sizeof(bool), cudaMemcpyDeviceToHost))
         if (found) break;
 
+        remove_duplication<Game><<<max_expansion, num_heaps>>>(hashtable_dev, s_dev, t_dev);
+        HANDLE_RESULT(cudaGetLastError())
+
         reinsert<Game><<<num_heaps / 1024, num_heaps>>>(hashtable_dev, heaps_dev, t_dev, target_dev);
+        HANDLE_RESULT(cudaGetLastError())
     }
 
-    /*
-    Game::SerializedState s_states[num_expanded_states];
+    std::vector<Game::SerializedState> s_states(num_expanded_states);
     Game::SerializedState* s_states_dev;
     HANDLE_RESULT(cudaMalloc(&s_states_dev, num_expanded_states * sizeof(Game::SerializedState)))
 
-    Game::SerializedState t_states[num_expanded_states];
+    std::vector<Game::SerializedState> t_states(num_expanded_states);
     Game::SerializedState* t_states_dev;
     HANDLE_RESULT(cudaMalloc(&t_states_dev, num_expanded_states * sizeof(Game::SerializedState)))
 
@@ -238,23 +244,22 @@ int main(int argc, char** argv) {
     extract_states<Game><<<max_expansion, num_heaps>>>(t_dev, t_states_dev);
 
     HANDLE_RESULT(cudaMemcpy(
-            s_states,
+            s_states.data(),
             s_states_dev,
-            num_expanded_states * sizeof(Game::Node),
+            num_expanded_states * sizeof(Game::SerializedState),
             cudaMemcpyDeviceToHost))
 
     HANDLE_RESULT(cudaMemcpy(
-            t_states,
+            t_states.data(),
             t_states_dev,
-            num_expanded_states * sizeof(Game::Node),
+            num_expanded_states * sizeof(Game::SerializedState),
             cudaMemcpyDeviceToHost))
-            */
 
-    HANDLE_RESULT(cudaFree(heaps_dev))
-    HANDLE_RESULT(cudaFree(s_dev))
-    HANDLE_RESULT(cudaFree(t_dev))
-    HANDLE_RESULT(cudaFree(m_dev))
-    HANDLE_RESULT(cudaFree(found_dev))
+    // HANDLE_RESULT(cudaFree(heaps_dev))
+    // HANDLE_RESULT(cudaFree(s_dev))
+    // HANDLE_RESULT(cudaFree(t_dev))
+    // HANDLE_RESULT(cudaFree(m_dev))
+    // HANDLE_RESULT(cudaFree(found_dev))
 
     // test <<< 1, 1 >>>(heap_dev, buf_dev);
 
