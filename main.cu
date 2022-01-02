@@ -155,12 +155,20 @@ __global__ void test_hash_find(HashtableType* table_dev, uint64_t* buf_dev, bool
  */
 
 template<typename Game>
-__global__ void extract_states(Arc<typename Game::State>* s_dev, typename Game::SerializedState* states_dev) {
+__global__ void extract_states(typename Game::StatePtr* s_dev, typename Game::SerializedState* states_dev) {
     auto index = blockIdx.x * blockDim.x + threadIdx.x;
     if (auto& ptr = s_dev[index]) {
-        states_dev[index].node = ptr->node;
-        states_dev[index].g = ptr->g;
-        states_dev[index].f = ptr->f;
+        states_dev[index] = typename Game::SerializedState(*ptr);
+    }
+}
+
+template<typename Game>
+__global__ void extract_chain(typename Game::StatePtr* m_dev, typename Game::SerializedState* solution_dev) {
+    auto ptr = *m_dev;
+    for (auto i = 0u; ptr; ++i) {
+        auto state = *ptr;
+        solution_dev[i] = typename Game::SerializedState(state);
+        ptr = state.prev;
     }
 }
 
@@ -188,13 +196,15 @@ int main(int argc, char** argv) {
 
     Game::StatePtr* m_dev;
     HANDLE_RESULT(cudaMalloc(&m_dev, sizeof(Game::StatePtr)))
+    HANDLE_RESULT(cudaMemset(m_dev, 0, sizeof(Game::StatePtr)))
 
     bool found;
     bool* found_dev;
     HANDLE_RESULT(cudaMalloc(&found_dev, sizeof(bool)))
 
     Game::Node start = 0xfedcba9876543210;
-    Game::Node target = 0x0123456789abcdef;
+    // Game::Node target = 0x0123456789abcdef;
+    Game::Node target = 0xF0DCBEA976583214;
 
     Game::Node* start_dev;
     HANDLE_RESULT(cudaMalloc(&start_dev, sizeof(Game::Node)))
@@ -207,30 +217,40 @@ int main(int argc, char** argv) {
     init_heaps<Game><<<1, 1>>>(heaps_dev, start_dev, target_dev);
     HANDLE_RESULT(cudaGetLastError())
 
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < 100; ++i) {
         extract_expand<Game><<<num_heaps / 1024, num_heaps, num_heaps * sizeof(Game::StatePtr)>>>(
                 heaps_dev,
                 s_dev,
                 m_dev,
                 target_dev);
-        HANDLE_RESULT(cudaGetLastError())
+        // HANDLE_RESULT(cudaGetLastError())
 
         compare_heap_best<Game><<<num_heaps / 1024, num_heaps, num_heaps * sizeof(Game::StatePtr)>>>(
                 heaps_dev,
                 m_dev,
                 found_dev);
-        HANDLE_RESULT(cudaGetLastError())
+        // HANDLE_RESULT(cudaGetLastError())
 
         HANDLE_RESULT(cudaMemcpy(&found, found_dev, sizeof(bool), cudaMemcpyDeviceToHost))
         if (found) break;
 
         remove_duplication<Game><<<max_expansion, num_heaps>>>(hashtable_dev, s_dev, t_dev);
-        HANDLE_RESULT(cudaGetLastError())
+        // HANDLE_RESULT(cudaGetLastError())
 
         reinsert<Game><<<num_heaps / 1024, num_heaps>>>(hashtable_dev, heaps_dev, t_dev, target_dev);
-        HANDLE_RESULT(cudaGetLastError())
+        // HANDLE_RESULT(cudaGetLastError())
     }
 
+    Game::SerializedState solution[1024];
+    Game::SerializedState* solution_dev;
+    HANDLE_RESULT(cudaMalloc(&solution_dev, 1024 * sizeof(Game::SerializedState)))
+    HANDLE_RESULT(cudaMemset(solution_dev, 0, 1024 * sizeof(Game::SerializedState)))
+
+    extract_chain<Game><<<1, 1>>>(m_dev, solution_dev);
+
+    HANDLE_RESULT(cudaMemcpy(solution, solution_dev, 1024 * sizeof(Game::SerializedState), cudaMemcpyDeviceToHost))
+
+    /*
     std::vector<Game::SerializedState> s_states(num_expanded_states);
     Game::SerializedState* s_states_dev;
     HANDLE_RESULT(cudaMalloc(&s_states_dev, num_expanded_states * sizeof(Game::SerializedState)))

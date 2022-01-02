@@ -30,6 +30,9 @@ __global__ void extract_expand(typename Game::Heap* heaps_dev,
     auto block_index = blockIdx.x;
     auto index = threadIdx.x;
 
+    buf[index] = {};
+    __syncthreads();
+
     if (global_index >= num_heaps) return;
     auto& heap = heaps_dev[global_index];
 
@@ -80,10 +83,12 @@ __global__ void compare_heap_best(typename Game::Heap* heaps_dev,
     auto global_index = blockIdx.x * blockDim.x + threadIdx.x;
     auto block_index = blockIdx.x;
     auto index = threadIdx.x;
+
     if (global_index >= num_heaps) return;
     auto& heap = heaps_dev[global_index];
 
     buf[index] = heap.data()[0];
+    __syncthreads();
 
     for (auto i = blockDim.x; i > 1;) {
         i >>= 1;
@@ -121,7 +126,6 @@ __global__ void remove_duplication(typename Game::Hashtable* hashtable_dev,
         auto state = *ptr;
         auto result = hashtable.find(state.node);
 
-        // not found or is superior to
         if (!result || result->g >= state.g) {
             t_dev[index] = std::move(ptr);
         }

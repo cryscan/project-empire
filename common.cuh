@@ -120,6 +120,10 @@ struct SerializedState {
     Node node;
     Value g;
     Value f;
+
+    SerializedState() = default;
+
+    __device__ explicit SerializedState(const State<Node, Value>& state) : node(state.node), g(state.g), f(state.f) {}
 };
 
 #endif //PROJECT_EMPIRE_COMMON_CUH
