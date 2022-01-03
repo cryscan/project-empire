@@ -217,7 +217,7 @@ int main(int argc, char** argv) {
     Game::Node start = 0xfedcba9876543210;
     // Game::Node target = 0x0123456789abcdef;
     // Game::Node target = 0xFAEDB95C76803214;
-    Game::Node target = 0x0aedf95cb7843621;
+    Game::Node target = 0xFAEDB95C78043621;
 
     Game::Node* start_dev;
     HANDLE_RESULT(cudaMalloc(&start_dev, sizeof(Game::Node)))
