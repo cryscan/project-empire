@@ -30,7 +30,7 @@ struct SlidingPad {
         for (int i = 0; i < 16; ++i, filter <<= 4) {
             auto x = (s & filter) >> (4 * i);
             auto y = (t & filter) >> (4 * i);
-            result += x > y ? x - y : y - x;
+            if (x != y) ++result;
         }
         return result;
     }
@@ -217,7 +217,7 @@ int main(int argc, char** argv) {
     init_heaps<Game><<<1, 1>>>(heaps_dev, start_dev, target_dev);
     HANDLE_RESULT(cudaGetLastError())
 
-    for (int i = 0; i < 1024; ++i) {
+    for (int i = 0; i < solution_size; ++i) {
         std::cout << "Iteration " << i << '\n';
 
         extract_expand<Game><<<num_heaps / 1024, num_heaps, num_heaps * sizeof(Game::StatePtr)>>>(
@@ -243,14 +243,15 @@ int main(int argc, char** argv) {
         HANDLE_RESULT(cudaGetLastError())
     }
 
-    Game::SerializedState solution[1024];
+    Game::SerializedState solution[solution_size];
     Game::SerializedState* solution_dev;
-    HANDLE_RESULT(cudaMalloc(&solution_dev, 1024 * sizeof(Game::SerializedState)))
-    HANDLE_RESULT(cudaMemset(solution_dev, 0, 1024 * sizeof(Game::SerializedState)))
+    HANDLE_RESULT(cudaMalloc(&solution_dev, solution_size * sizeof(Game::SerializedState)))
+    HANDLE_RESULT(cudaMemset(solution_dev, 0, solution_size * sizeof(Game::SerializedState)))
 
     extract_chain<Game><<<1, 1>>>(m_dev, solution_dev);
 
-    HANDLE_RESULT(cudaMemcpy(solution, solution_dev, 1024 * sizeof(Game::SerializedState), cudaMemcpyDeviceToHost))
+    HANDLE_RESULT(
+            cudaMemcpy(solution, solution_dev, solution_size * sizeof(Game::SerializedState), cudaMemcpyDeviceToHost))
 
     for (auto x: solution) {
         if (x.node == 0) break;

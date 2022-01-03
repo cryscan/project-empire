@@ -13,6 +13,8 @@ constexpr size_t num_heaps = 1024;
 constexpr size_t max_expansion = 4;
 constexpr size_t num_expanded_states = num_heaps * max_expansion;
 
+constexpr size_t solution_size = 2048;
+
 template<typename Node, typename Value>
 struct State;
 
