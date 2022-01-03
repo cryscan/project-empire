@@ -13,7 +13,9 @@ constexpr size_t num_heaps = 1024;
 constexpr size_t max_expansion = 4;
 constexpr size_t num_expanded_states = num_heaps * max_expansion;
 
-constexpr size_t solution_size = 2048;
+constexpr size_t solution_size = 1024;
+constexpr size_t heap_size = 4 * solution_size;
+constexpr size_t hashtable_size = 2048 * 2048;
 
 template<typename Node, typename Value>
 struct State;
@@ -22,6 +24,17 @@ template<typename T>
 class Arc {
     T* ptr;
     int* ref_count;
+
+    __device__ friend void swap(Arc& a, Arc& b) {
+        T* temp_ptr = a.ptr;
+        int* temp_ref_count = a.ref_count;
+
+        a.ptr = b.ptr;
+        a.ref_count = b.ref_count;
+
+        b.ptr = temp_ptr;
+        b.ref_count = temp_ref_count;
+    }
 
     __device__ Arc(T* ptr, int* ref_count) : ptr(ptr), ref_count(ref_count) {}
 
@@ -101,6 +114,7 @@ __device__ Arc<T> make_arc(U&& ...u) {
     return Arc<T>(new T(u...));
 }
 
+/*
 template<typename T>
 __device__ void swap(Arc<T>& a, Arc<T>& b) {
     using std::move;
@@ -108,6 +122,7 @@ __device__ void swap(Arc<T>& a, Arc<T>& b) {
     a = move(b);
     b = move(temp);
 }
+*/
 
 template<typename Node, typename Value>
 struct State {

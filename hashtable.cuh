@@ -11,7 +11,7 @@ class Hashtable {
 public:
     using StatePtr = Arc<State<Node, Value>>;
 
-    explicit Hashtable(size_t capacity) : capacity(capacity), states(nullptr), locks(nullptr) {
+    explicit Hashtable(size_t capacity = hashtable_size) : capacity(capacity), states(nullptr), locks(nullptr) {
         HANDLE_RESULT(cudaMalloc(&states, capacity * sizeof(StatePtr)))
         HANDLE_RESULT(cudaMemset(states, 0, capacity * sizeof(StatePtr)))
         HANDLE_RESULT(cudaMalloc(&locks, capacity * sizeof(int)))
