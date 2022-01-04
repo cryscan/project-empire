@@ -26,7 +26,7 @@ public:
 
         states[size] = state;
         auto current = size;
-        while (current > 0 && states[current]->f < states[parent(current)]->f) {
+        while (current > 0 && comp(states[current], states[parent(current)])) {
             swap(states[current], states[parent(current)]);
             current = parent(current);
         }
@@ -45,11 +45,11 @@ public:
             auto smallest = current;
 
             auto child = left_child(current);
-            if (child < size && states[child]->f < states[smallest]->f)
+            if (child < size && comp(states[child], states[smallest]))
                 smallest = child;
 
             child = right_child(current);
-            if (child < size && states[child]->f < states[smallest]->f)
+            if (child < size && comp(states[child], states[smallest]))
                 smallest = child;
 
             if (smallest == current) break;
@@ -64,6 +64,13 @@ public:
 private:
     StatePtr* states;
     size_t size, capacity;
+
+    __device__ bool comp(const StatePtr& a, const StatePtr& b) const {
+        // return a->f < b->f;
+        if (a->f < b->f) return true;
+        else if (a->f > b->f) return false;
+        else return a->g > b->g;
+    }
 
     __device__ size_t parent(size_t index) { return (index - 1) / 2; }
 

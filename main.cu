@@ -1,5 +1,6 @@
 #include <vector>
 #include <iostream>
+#include <fstream>
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 
@@ -30,7 +31,7 @@ struct SlidingPad {
         for (int i = 0; i < 16; ++i, filter <<= 4) {
             auto x = (s & filter) >> (4 * i);
             auto y = (t & filter) >> (4 * i);
-            if (x != y) ++result;
+            if (x != y && x != 0) ++result;
         }
         return result;
     }
@@ -254,7 +255,7 @@ int main(int argc, char** argv) {
         remove_duplication<Game><<<max_expansion, num_heaps>>>(hashtable_dev, s_dev, t_dev);
         HANDLE_RESULT(cudaGetLastError())
 
-        reinsert<Game><<<num_heaps / 1024, num_heaps>>>(hashtable_dev, heaps_dev, t_dev, target_dev);
+        reinsert<Game><<<1, num_heaps>>>(hashtable_dev, heaps_dev, t_dev, target_dev);
         HANDLE_RESULT(cudaGetLastError())
     }
 
@@ -267,8 +268,10 @@ int main(int argc, char** argv) {
 
     extract_chain<Game><<<1, 1>>>(m_dev, solution_dev);
 
-    HANDLE_RESULT(
-            cudaMemcpy(solution, solution_dev, solution_size * sizeof(Game::SerializedState), cudaMemcpyDeviceToHost))
+    HANDLE_RESULT(cudaMemcpy(solution,
+                             solution_dev,
+                             solution_size * sizeof(Game::SerializedState),
+                             cudaMemcpyDeviceToHost))
 
     std::cout << std::endl << "Solution:\n";
     for (auto x: solution) {
@@ -298,31 +301,66 @@ int main(int argc, char** argv) {
                              num_heaps * sizeof(Game::SerializedState),
                              cudaMemcpyDeviceToHost))
 
-    std::cout << std::endl << "Bests:\n";
-    for (auto x: heap_bests) {
-        if (x.node == 0) break;
-        std::cout << x.g << ' ' << x.f << std::endl;
+    {
+        std::ofstream fs("best.txt");
+        auto k = 0u;
+        fs << "Bests:\n";
+        for (auto x: heap_bests) {
+            if (x.node == 0) continue;
+            fs << k << ' ' << x.g << ' ' << x.f << std::endl;
 
-        Game::Node filter = 0xf;
-        for (auto i = 0u; i < 4; ++i) {
-            for (auto j = 0u; j < 4; ++j) {
-                auto n = (filter & x.node) >> ((4 * i + j) * 4);
-                std::cout << n << '\t';
-                filter <<= 4;
+            Game::Node filter = 0xf;
+            for (auto i = 0u; i < 4; ++i) {
+                for (auto j = 0u; j < 4; ++j) {
+                    auto n = (filter & x.node) >> ((4 * i + j) * 4);
+                    fs << n << '\t';
+                    filter <<= 4;
+                }
+                fs << '\n';
             }
-            std::cout << '\n';
+            fs << std::endl;
+            ++k;
         }
-        std::cout << std::endl;
+    }
+
+    std::vector<Game::SerializedState> t_states(num_expanded_states);
+    Game::SerializedState* t_states_dev;
+    HANDLE_RESULT(cudaMalloc(&t_states_dev, num_expanded_states * sizeof(Game::SerializedState)))
+
+    extract_states<Game><<<max_expansion, num_heaps>>>(t_dev, t_states_dev);
+
+    HANDLE_RESULT(cudaMemcpy(
+            t_states.data(),
+            t_states_dev,
+            num_expanded_states * sizeof(Game::SerializedState),
+            cudaMemcpyDeviceToHost))
+
+    {
+        std::ofstream fs("t.txt");
+        auto k = 0u;
+        fs << "T states:\n";
+        for (auto x: t_states) {
+            if (x.node == 0) continue;
+            fs << k << ' ' << x.g << ' ' << x.f << std::endl;
+
+            Game::Node filter = 0xf;
+            for (auto i = 0u; i < 4; ++i) {
+                for (auto j = 0u; j < 4; ++j) {
+                    auto n = (filter & x.node) >> ((4 * i + j) * 4);
+                    fs << n << '\t';
+                    filter <<= 4;
+                }
+                fs << '\n';
+            }
+            fs << std::endl;
+            ++k;
+        }
     }
 
     /*
     std::vector<Game::SerializedState> s_states(num_expanded_states);
     Game::SerializedState* s_states_dev;
     HANDLE_RESULT(cudaMalloc(&s_states_dev, num_expanded_states * sizeof(Game::SerializedState)))
-
-    std::vector<Game::SerializedState> t_states(num_expanded_states);
-    Game::SerializedState* t_states_dev;
-    HANDLE_RESULT(cudaMalloc(&t_states_dev, num_expanded_states * sizeof(Game::SerializedState)))
 
     // extract nodes from pointers
     extract_states<Game><<<max_expansion, num_heaps>>>(s_dev, s_states_dev);
@@ -331,12 +369,6 @@ int main(int argc, char** argv) {
     HANDLE_RESULT(cudaMemcpy(
             s_states.data(),
             s_states_dev,
-            num_expanded_states * sizeof(Game::SerializedState),
-            cudaMemcpyDeviceToHost))
-
-    HANDLE_RESULT(cudaMemcpy(
-            t_states.data(),
-            t_states_dev,
             num_expanded_states * sizeof(Game::SerializedState),
             cudaMemcpyDeviceToHost))
 

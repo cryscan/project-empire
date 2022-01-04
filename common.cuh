@@ -15,7 +15,7 @@ constexpr size_t num_expanded_states = num_heaps * max_expansion;
 
 constexpr size_t solution_size = 1024;
 constexpr size_t heap_size = 4 * solution_size;
-constexpr size_t hashtable_size = 2048 * 2048;
+constexpr size_t hashtable_size = solution_size * solution_size;
 
 template<typename Node, typename Value>
 struct State;
@@ -40,8 +40,8 @@ class Arc {
 
     __device__ void decrease_and_free() {
         if (ptr && ref_count && (atomicSub(ref_count, 1) == 1)) {
-            delete ref_count;
-            delete ptr;
+            // delete ref_count;
+            // delete ptr;
         }
     }
 

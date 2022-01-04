@@ -30,7 +30,7 @@ __global__ void extract_expand(typename Game::Heap* heaps_dev,
     auto block_index = blockIdx.x;
     auto index = threadIdx.x;
 
-    buf[index] = {};
+    memset(&buf[index], 0, sizeof(typename Game::StatePtr));
     __syncthreads();
 
     if (global_index >= num_heaps) return;
@@ -40,6 +40,7 @@ __global__ void extract_expand(typename Game::Heap* heaps_dev,
         if (q->node == *target_dev) {
             // push candidate
             buf[index] = std::move(q);
+            // assert(false);
         } else {
             // expand the state list
             Game::expand(s_dev, q, *target_dev);
@@ -61,7 +62,12 @@ __global__ void extract_expand(typename Game::Heap* heaps_dev,
         __syncthreads();
     }
 
-    if (index == 0) m_dev[block_index] = std::move(buf[0]);
+    if (index == 0) {
+        auto& a = m_dev[block_index];
+        auto& b = buf[0];
+        // a <- min(a, b)
+        if ((a && b && b->f < a->f) || !a) a = std::move(b);
+    }
 
     __syncthreads();
 
@@ -80,6 +86,8 @@ __global__ void compare_heap_best(typename Game::Heap* heaps_dev,
                                   bool* found_dev) {
     extern __shared__ typename Game::StatePtr buf[];
 
+    if (found_dev[0]) return;
+
     auto global_index = blockIdx.x * blockDim.x + threadIdx.x;
     auto block_index = blockIdx.x;
     auto index = threadIdx.x;
@@ -87,6 +95,7 @@ __global__ void compare_heap_best(typename Game::Heap* heaps_dev,
     if (global_index >= num_heaps) return;
     auto& heap = heaps_dev[global_index];
 
+    memset(&buf[index], 0, sizeof(typename Game::StatePtr));
     buf[index] = heap.data()[0];
     __syncthreads();
 
@@ -122,6 +131,8 @@ __global__ void remove_duplication(typename Game::Hashtable* hashtable_dev,
     auto& hashtable = *hashtable_dev;
     auto index = blockIdx.x * blockDim.x + threadIdx.x;
 
+    t_dev[index] = {};
+
     if (auto& ptr = s_dev[index]) {
         auto state = *ptr;
         auto result = hashtable.find(state.node);
@@ -147,8 +158,10 @@ __global__ void reinsert(typename Game::Hashtable* hashtable_dev,
         if (auto& ptr = t_dev[i]) {
             auto state = *ptr;
             hashtable.insert(state.node, ptr);
-            ptr->f = state.g + Game::heuristic(state.node, *target_dev);
-            heap.push(ptr);
+            auto h = Game::heuristic(state.node, *target_dev);
+            ptr->f = state.g + h;
+            // assert(!(h == 0 && state.g == 14));
+            heap.push(std::move(ptr));
         }
     }
 }
