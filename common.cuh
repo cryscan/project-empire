@@ -23,72 +23,65 @@ struct State;
 template<typename T>
 class Arc {
     T* ptr;
-    int* ref_count;
+    // int* ref_count;
 
     __device__ friend void swap(Arc& a, Arc& b) {
         T* temp_ptr = a.ptr;
-        int* temp_ref_count = a.ref_count;
-
         a.ptr = b.ptr;
-        a.ref_count = b.ref_count;
-
         b.ptr = temp_ptr;
-        b.ref_count = temp_ref_count;
     }
 
-    __device__ Arc(T* ptr, int* ref_count) : ptr(ptr), ref_count(ref_count) {}
-
     __device__ void decrease_and_free() {
-        if (ptr && ref_count && (atomicSub(ref_count, 1) == 1)) {
-            // delete ref_count;
-            // delete ptr;
-        }
+        // if (ptr && ref_count && (atomicSub(ref_count, 1) == 1)) {
+        // delete ref_count;
+        // delete ptr;
+        // }
     }
 
     __device__ void increase_ref_count() {
-        if (ptr && ref_count) atomicAdd(ref_count, 1);
+        // if (ptr && ref_count) atomicAdd(ref_count, 1);
     }
 
 public:
-    __device__ Arc() : ptr(nullptr), ref_count(nullptr) {}
+    __device__ Arc() : ptr(nullptr) {}
 
-    __device__ explicit Arc(T* ptr) : ptr(ptr), ref_count(nullptr) {
-        if (ptr) ref_count = new int(1);
-    }
+    __device__ Arc(nullptr_t) : ptr(nullptr) {}
+
+    __device__ explicit Arc(T* ptr) : ptr(ptr) {}
 
     __device__ ~Arc() {
         decrease_and_free();
     }
 
-    __device__ Arc(const Arc& other) : ptr(other.ptr), ref_count(other.ref_count) {
+    __device__ Arc(const Arc& other) : ptr(other.ptr) {
         increase_ref_count();
     }
 
     __device__ Arc& operator=(const Arc& other) {
         if (&other != this) {
-            Arc temp(ptr, ref_count);
-
+            Arc temp(ptr);
             ptr = other.ptr;
-            ref_count = other.ref_count;
             increase_ref_count();
         }
 
         return *this;
     }
 
-    __device__ Arc(Arc&& other) noexcept: ptr(other.ptr), ref_count(other.ref_count) {
+    __device__ Arc& operator=(nullptr_t) {
+        Arc temp(ptr);
+        ptr = nullptr;
+        return *this;
+    }
+
+    __device__ Arc(Arc&& other) noexcept: ptr(other.ptr) {
         other.ptr = nullptr;
-        other.ref_count = nullptr;
     }
 
     __device__ Arc& operator=(Arc&& other) noexcept {
         if (&other != this) {
-            Arc temp(ptr, ref_count);
-
+            Arc temp(ptr);
             ptr = other.ptr;
-            ref_count = other.ref_count;
             other.ptr = nullptr;
-            other.ref_count = nullptr;
         }
 
         return *this;
@@ -113,16 +106,6 @@ template<typename T, typename ...U>
 __device__ Arc<T> make_arc(U&& ...u) {
     return Arc<T>(new T(u...));
 }
-
-/*
-template<typename T>
-__device__ void swap(Arc<T>& a, Arc<T>& b) {
-    using std::move;
-    Arc<T> temp = move(a);
-    a = move(b);
-    b = move(temp);
-}
-*/
 
 template<typename Node, typename Value>
 struct State {

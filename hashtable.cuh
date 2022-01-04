@@ -23,13 +23,13 @@ public:
         HANDLE_RESULT(cudaFree(locks))
     }
 
-    __device__ void insert(Node& key, const StatePtr& state_ptr) {
+    __device__ void insert(Node& key, const StatePtr& state) {
         size_t slot = hash(key);
         for (auto i = 0u; i < 32; ++i) {
             if (i != threadIdx.x % 32) continue;
 
             while (atomicExch(&locks[slot], 1) == 1);
-            states[slot] = state_ptr;
+            states[slot] = state;
             atomicExch(&locks[slot], 0);
         }
     }
@@ -38,10 +38,9 @@ public:
         // step1: hash
         size_t slot = hash(key);
 
-        // step2: check initial & check node == key
+        // step2: check
         auto ptr = states[slot];
-        if (ptr == nullptr) return {};
-        if (ptr->node != key) return {};
+        if (ptr == nullptr || ptr->node != key) return nullptr;
 
         // step3: if found, update output
         return ptr;

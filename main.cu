@@ -2,7 +2,6 @@
 #include <iostream>
 #include <fstream>
 #include <cuda_runtime.h>
-#include <device_launch_parameters.h>
 
 #include "common.cuh"
 #include "heap.cuh"
@@ -20,9 +19,9 @@ struct SlidingPad {
 
     enum Direction {
         UP = 0,
-        RIGHT,
-        DOWN,
-        LEFT,
+        RIGHT = 1,
+        DOWN = 2,
+        LEFT = 3,
     };
 
     static __device__ Value heuristic(Node s, Node t) {
@@ -36,7 +35,7 @@ struct SlidingPad {
         return result;
     }
 
-    static __device__ StatePtr expand_direction(const StatePtr& state, Node t, Direction direction) {
+    static __device__ StatePtr expand_direction(const StatePtr& state, Direction direction) {
         /*  Board
          *      0   1   2   3
          *      4   5   6   7
@@ -48,7 +47,7 @@ struct SlidingPad {
          */
         State current = *state;
         Node filter = 0xf;
-        int x, y;
+        int x = -1, y = -1;
         for (int i = 0; i < 16; ++i, filter <<= 4) {
             if ((current.node & filter) == 0) {
                 x = i / 4;
@@ -57,32 +56,13 @@ struct SlidingPad {
             }
         }
 
+        assert(x >= 0 && x <= 3 && y >= 0 && y <= 3);
+
         if (direction == UP && x > 0) {
             auto selected = current.node & (filter >> 16);
             State next;
             next.node = (current.node | (selected << 16)) ^ selected;
             next.g = current.g + 1;
-            // next.f = next.g + heuristic(next.node, t);
-            next.prev = state;
-            return make_arc<State>(next);
-        }
-
-        if (direction == DOWN && x < 3) {
-            auto selected = current.node & (filter << 16);
-            State next;
-            next.node = (current.node | (selected >> 16)) ^ selected;
-            next.g = current.g + 1;
-            // next.f = next.g + heuristic(next.node, t);
-            next.prev = state;
-            return make_arc<State>(next);
-        }
-
-        if (direction == LEFT && y > 0) {
-            auto selected = current.node & (filter >> 4);
-            State next;
-            next.node = (current.node | (selected << 4)) ^ selected;
-            next.g = current.g + 1;
-            // next.f = next.g + heuristic(next.node, t);
             next.prev = state;
             return make_arc<State>(next);
         }
@@ -92,18 +72,35 @@ struct SlidingPad {
             State next;
             next.node = (current.node | (selected >> 4)) ^ selected;
             next.g = current.g + 1;
-            // next.f = next.g + heuristic(next.node, t);
             next.prev = state;
             return make_arc<State>(next);
         }
 
-        return {};
+        if (direction == DOWN && x < 3) {
+            auto selected = current.node & (filter << 16);
+            State next;
+            next.node = (current.node | (selected >> 16)) ^ selected;
+            next.g = current.g + 1;
+            next.prev = state;
+            return make_arc<State>(next);
+        }
+
+        if (direction == LEFT && y > 0) {
+            auto selected = current.node & (filter >> 4);
+            State next;
+            next.node = (current.node | (selected << 4)) ^ selected;
+            next.g = current.g + 1;
+            next.prev = state;
+            return make_arc<State>(next);
+        }
+
+        return nullptr;
     }
 
-    static __device__ void expand(StatePtr* s_dev, const StatePtr& state, Node t) {
+    static __device__ void expand(StatePtr* s_dev, const StatePtr& state) {
         auto index = blockIdx.x * blockDim.x + threadIdx.x;
         for (auto d: {UP, RIGHT, DOWN, LEFT}) {
-            s_dev[index * max_expansion + d] = expand_direction(state, t, d);
+            s_dev[index * max_expansion + d] = expand_direction(state, d);
         }
     }
 };
@@ -214,12 +211,14 @@ int main(int argc, char** argv) {
     bool found;
     bool* found_dev;
     HANDLE_RESULT(cudaMalloc(&found_dev, sizeof(bool)))
+    HANDLE_RESULT(cudaMemset(found_dev, 0, sizeof(bool)))
 
-    Game::Node start = 0xfedcba9876543210;
-    // Game::Node target = 0x0123456789abcdef;
+    Game::Node start = 0xFEDCBA9876543210;
+    // Game::Node target = 0xEFDCBA8976543210;
     // Game::Node target = 0xFAEDB95C76803214;
-    Game::Node target = 0xFAEDB95C78043621;
+    Game::Node target = 0xFAEDB9C478513620;
 
+    /*
     Game::Node* start_dev;
     HANDLE_RESULT(cudaMalloc(&start_dev, sizeof(Game::Node)))
     HANDLE_RESULT(cudaMemcpy(start_dev, &start, sizeof(Game::Node), cudaMemcpyHostToDevice))
@@ -227,8 +226,9 @@ int main(int argc, char** argv) {
     Game::Node* target_dev;
     HANDLE_RESULT(cudaMalloc(&target_dev, sizeof(Game::Node)))
     HANDLE_RESULT(cudaMemcpy(target_dev, &target, sizeof(Game::Node), cudaMemcpyHostToDevice))
+     */
 
-    init_heaps<Game><<<1, 1>>>(heaps_dev, start_dev, target_dev);
+    init_heaps<Game><<<1, 1>>>(heaps_dev, start, target);
     HANDLE_RESULT(cudaGetLastError())
 
     for (int i = 0; i < solution_size; ++i) {
@@ -238,7 +238,7 @@ int main(int argc, char** argv) {
                 heaps_dev,
                 s_dev,
                 m_dev,
-                target_dev);
+                target);
         HANDLE_RESULT(cudaGetLastError())
 
         compare_heap_best<Game><<<1, num_heaps, num_heaps * sizeof(Game::StatePtr)>>>(
@@ -247,15 +247,15 @@ int main(int argc, char** argv) {
                 found_dev);
         HANDLE_RESULT(cudaGetLastError())
 
-        if (i % 16 == 0) {
-            HANDLE_RESULT(cudaMemcpy(&found, found_dev, sizeof(bool), cudaMemcpyDeviceToHost))
-            if (found) break;
-        }
+        // if (i % 16 == 0) {
+        HANDLE_RESULT(cudaMemcpy(&found, found_dev, sizeof(bool), cudaMemcpyDeviceToHost))
+        if (found) break;
+        // }
 
         remove_duplication<Game><<<max_expansion, num_heaps>>>(hashtable_dev, s_dev, t_dev);
         HANDLE_RESULT(cudaGetLastError())
 
-        reinsert<Game><<<1, num_heaps>>>(hashtable_dev, heaps_dev, t_dev, target_dev);
+        reinsert<Game><<<1, num_heaps>>>(hashtable_dev, heaps_dev, t_dev, target);
         HANDLE_RESULT(cudaGetLastError())
     }
 
@@ -323,6 +323,7 @@ int main(int argc, char** argv) {
         }
     }
 
+    /*
     std::vector<Game::SerializedState> t_states(num_expanded_states);
     Game::SerializedState* t_states_dev;
     HANDLE_RESULT(cudaMalloc(&t_states_dev, num_expanded_states * sizeof(Game::SerializedState)))
@@ -357,7 +358,6 @@ int main(int argc, char** argv) {
         }
     }
 
-    /*
     std::vector<Game::SerializedState> s_states(num_expanded_states);
     Game::SerializedState* s_states_dev;
     HANDLE_RESULT(cudaMalloc(&s_states_dev, num_expanded_states * sizeof(Game::SerializedState)))
@@ -380,7 +380,6 @@ int main(int argc, char** argv) {
 
     // test <<< 1, 1 >>>(heap_dev, buf_dev);
 
-    /*
     constexpr size_t thread_count = 1024;
     constexpr size_t table_size = 1024 * 1024;
 
@@ -416,10 +415,9 @@ int main(int argc, char** argv) {
     std::cout << "finds: \n";
     for (auto element: bool_buf) {
         std::cout << element << '\n';
-    }*/
+    }
 
-
-    /*constexpr uint64_t HEAP_CAPACITY = 1024;
+    constexpr uint64_t HEAP_CAPACITY = 1024;
     Heap h(HEAP_CAPACITY);
     Heap* h_dev;
     HANDLE_RESULT(cudaMalloc(&h_dev, sizeof(Heap)))
@@ -432,7 +430,8 @@ int main(int argc, char** argv) {
 
     unsigned valueInDest;
     unsigned* valueInDest_dev;
-    HANDLE_RESULT(cudaMalloc(&valueInDest_dev, sizeof(unsigned)));*/
+    HANDLE_RESULT(cudaMalloc(&valueInDest_dev, sizeof(unsigned)));
+     */
 
     return 0;
 }

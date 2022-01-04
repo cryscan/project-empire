@@ -34,9 +34,9 @@ public:
     }
 
     __device__ StatePtr pop() {
-        if (size == 0) return {};
+        if (size == 0) return nullptr;
 
-        auto result = std::move(states[0]);
+        StatePtr result = std::move(states[0]);
         states[0] = std::move(states[size - 1]);
         --size;
 
@@ -66,7 +66,7 @@ private:
     size_t size, capacity;
 
     __device__ bool comp(const StatePtr& a, const StatePtr& b) const {
-        // return a->f < b->f;
+        return a->f < b->f;
         if (a->f < b->f) return true;
         else if (a->f > b->f) return false;
         else return a->g > b->g;
