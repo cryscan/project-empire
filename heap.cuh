@@ -7,18 +7,14 @@
 
 #include <cassert>
 
-template<typename Node, typename Value>
+template<typename Node, typename Value, size_t CAPACITY>
 class Heap {
 public:
     using StatePtr = Arc<State<Node, Value>>;
 
-    explicit Heap(size_t capacity = heap_size) : size(0), capacity(capacity) {
+    explicit Heap() : size(0), capacity(CAPACITY) {
         HANDLE_RESULT(cudaMalloc(&states, capacity * sizeof(StatePtr)))
         HANDLE_RESULT(cudaMemset(states, 0, capacity * sizeof(StatePtr)))
-    }
-
-    ~Heap() {
-        HANDLE_RESULT(cudaFree(states))
     }
 
     __device__ void push(const StatePtr& state) {
@@ -67,9 +63,6 @@ private:
 
     __device__ bool comp(const StatePtr& a, const StatePtr& b) const {
         return a->f < b->f;
-        if (a->f < b->f) return true;
-        else if (a->f > b->f) return false;
-        else return a->g > b->g;
     }
 
     __device__ size_t parent(size_t index) { return (index - 1) / 2; }
@@ -78,5 +71,16 @@ private:
 
     __device__ size_t right_child(size_t index) { return index * 2 + 2; }
 };
+
+template<typename Node, typename Value, size_t COUNT, size_t CAPACITY>
+Heap<Node, Value, CAPACITY>* make_heaps() {
+    using HeapType = Heap<Node, Value, CAPACITY>;
+    HeapType heaps[COUNT];
+
+    HeapType* dev;
+    HANDLE_RESULT(cudaMalloc(&dev, COUNT * sizeof(HeapType)))
+    HANDLE_RESULT(cudaMemcpy(dev, heaps, COUNT * sizeof(HeapType), cudaMemcpyHostToDevice))
+    return dev;
+}
 
 #endif //PROJECT_EMPIRE_HEAP_CUH

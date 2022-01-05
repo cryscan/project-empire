@@ -6,21 +6,16 @@
 #include <cstdlib>
 #include <device_atomic_functions.h>
 
-template<typename Node, typename Value>
+template<typename Node, typename Value, size_t CAPACITY>
 class Hashtable {
 public:
     using StatePtr = Arc<State<Node, Value>>;
 
-    explicit Hashtable(size_t capacity = hashtable_size) : capacity(capacity), states(nullptr), locks(nullptr) {
+    explicit Hashtable() : capacity(CAPACITY), states(nullptr), locks(nullptr) {
         HANDLE_RESULT(cudaMalloc(&states, capacity * sizeof(StatePtr)))
         HANDLE_RESULT(cudaMemset(states, 0, capacity * sizeof(StatePtr)))
         HANDLE_RESULT(cudaMalloc(&locks, capacity * sizeof(int)))
         HANDLE_RESULT(cudaMemset(locks, 0, capacity * sizeof(int)))
-    }
-
-    ~Hashtable() {
-        HANDLE_RESULT(cudaFree(states))
-        HANDLE_RESULT(cudaFree(locks))
     }
 
     __device__ void insert(Node& key, const StatePtr& state) {
@@ -75,6 +70,17 @@ private:
         return hashed % capacity;
     }
 };
+
+template<typename Node, typename Value, size_t COUNT, size_t CAPACITY>
+Hashtable<Node, Value, CAPACITY>* make_hashtable() {
+    using HashtableType = Hashtable<Node, Value, CAPACITY>;
+    HashtableType hashtable[COUNT];
+
+    HashtableType* dev;
+    HANDLE_RESULT(cudaMalloc(&dev, COUNT * sizeof(HashtableType)))
+    HANDLE_RESULT(cudaMemcpy(dev, hashtable, COUNT * sizeof(HashtableType), cudaMemcpyHostToDevice))
+    return dev;
+}
 
 
 #endif // !PROJECT_EMPIRE_HASHTABLE_CUH

@@ -21,6 +21,7 @@ init_heaps(typename Game::Heap* heaps_dev,
 
 template<typename Game>
 __global__ void extract_expand(typename Game::Heap* heaps_dev,
+                               typename Game::Pool* pool_dev,
                                typename Game::StatePtr* s_dev,
                                typename Game::StatePtr* m_dev,
                                typename Game::Node target) {
@@ -44,7 +45,7 @@ __global__ void extract_expand(typename Game::Heap* heaps_dev,
             // assert(false);
         } else {
             // expand the state list
-            Game::expand(s_dev, q);
+            Game::expand(pool_dev, s_dev, q);
             // s_dev[index] = std::move(q);
         }
     }

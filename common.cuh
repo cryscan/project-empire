@@ -16,6 +16,7 @@ constexpr size_t num_expanded_states = num_heaps * max_expansion;
 constexpr size_t solution_size = 1024;
 constexpr size_t heap_size = 4 * solution_size;
 constexpr size_t hashtable_size = solution_size * solution_size;
+constexpr size_t pool_size = num_expanded_states * solution_size;
 
 template<typename Node, typename Value>
 struct State;
@@ -125,5 +126,45 @@ struct SerializedState {
 
     __device__ explicit SerializedState(const State<Node, Value>& state) : node(state.node), g(state.g), f(state.f) {}
 };
+
+template<typename T, size_t CAPACITY>
+class Pool {
+public:
+    explicit Pool() : size(0), capacity(CAPACITY), memory(nullptr) {
+        HANDLE_RESULT(cudaMalloc(&memory, capacity * sizeof(T)))
+        HANDLE_RESULT(cudaMemset(memory, 0, capacity * sizeof(T)))
+    }
+
+    __device__ Arc<T> allocate() {
+        assert(size < capacity);
+
+        auto old = atomicAdd(&size, 1);
+        return Arc<T>(memory + old);
+    }
+
+    __device__ Arc<T> allocate(const T& t) {
+        assert(size < capacity);
+
+        auto old = atomicAdd(&size, 1);
+        auto ptr = Arc<T>(memory + old);
+        *ptr = t;
+        return ptr;
+    }
+
+private:
+    T* memory;
+    size_t size, capacity;
+};
+
+template<typename T, size_t CAPACITY>
+Pool<T, CAPACITY>* make_pool() {
+    using PoolType = Pool<T, CAPACITY>;
+    PoolType pool;
+
+    PoolType* dev;
+    HANDLE_RESULT(cudaMalloc(&dev, sizeof(PoolType)))
+    HANDLE_RESULT(cudaMemcpy(dev, &pool, sizeof(PoolType), cudaMemcpyHostToDevice))
+    return dev;
+}
 
 #endif //PROJECT_EMPIRE_COMMON_CUH

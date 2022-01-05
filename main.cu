@@ -10,12 +10,13 @@
 
 struct SlidingPad {
     using Node = uint64_t;
-    using Value = unsigned int;
-    using Heap = Heap<Node, Value>;
+    using Value = uint32_t;
+    using Heap = Heap<Node, Value, heap_size>;
     using State = State<Node, Value>;
     using StatePtr = Arc<State>;
     using SerializedState = SerializedState<Node, Value>;
-    using Hashtable = Hashtable<Node, Value>;
+    using Hashtable = Hashtable<Node, Value, hashtable_size>;
+    using Pool = Pool<State, pool_size>;
 
     enum Direction {
         UP = 0,
@@ -35,7 +36,7 @@ struct SlidingPad {
         return result;
     }
 
-    static __device__ StatePtr expand_direction(const StatePtr& state, Direction direction) {
+    static __device__ StatePtr expand_direction(Pool* pool_dev, const StatePtr& state, Direction direction) {
         /*  Board
          *      0   1   2   3
          *      4   5   6   7
@@ -56,15 +57,13 @@ struct SlidingPad {
             }
         }
 
-        assert(x >= 0 && x <= 3 && y >= 0 && y <= 3);
-
         if (direction == UP && x > 0) {
             auto selected = current.node & (filter >> 16);
             State next;
             next.node = (current.node | (selected << 16)) ^ selected;
             next.g = current.g + 1;
             next.prev = state;
-            return make_arc<State>(next);
+            return pool_dev->allocate(next);
         }
 
         if (direction == RIGHT && y < 3) {
@@ -73,7 +72,7 @@ struct SlidingPad {
             next.node = (current.node | (selected >> 4)) ^ selected;
             next.g = current.g + 1;
             next.prev = state;
-            return make_arc<State>(next);
+            return pool_dev->allocate(next);
         }
 
         if (direction == DOWN && x < 3) {
@@ -82,7 +81,7 @@ struct SlidingPad {
             next.node = (current.node | (selected >> 16)) ^ selected;
             next.g = current.g + 1;
             next.prev = state;
-            return make_arc<State>(next);
+            return pool_dev->allocate(next);
         }
 
         if (direction == LEFT && y > 0) {
@@ -91,16 +90,16 @@ struct SlidingPad {
             next.node = (current.node | (selected << 4)) ^ selected;
             next.g = current.g + 1;
             next.prev = state;
-            return make_arc<State>(next);
+            return pool_dev->allocate(next);
         }
 
         return nullptr;
     }
 
-    static __device__ void expand(StatePtr* s_dev, const StatePtr& state) {
+    static __device__ void expand(Pool* pool_dev, StatePtr* s_dev, const StatePtr& state) {
         auto index = blockIdx.x * blockDim.x + threadIdx.x;
         for (auto d: {UP, RIGHT, DOWN, LEFT}) {
-            s_dev[index * max_expansion + d] = expand_direction(state, d);
+            s_dev[index * max_expansion + d] = expand_direction(pool_dev, state, d);
         }
     }
 
@@ -192,16 +191,9 @@ __global__ void extract_chain(typename Game::StatePtr* m_dev, typename Game::Ser
 int main(int argc, char** argv) {
     using Game = SlidingPad;
 
-    std::vector<Game::Heap> heaps(num_heaps);
-    Game::Hashtable hashtable;
-
-    Game::Heap* heaps_dev;
-    HANDLE_RESULT(cudaMalloc(&heaps_dev, num_heaps * sizeof(Game::Heap)))
-    HANDLE_RESULT(cudaMemcpy(heaps_dev, heaps.data(), num_heaps * sizeof(Game::Heap), cudaMemcpyHostToDevice))
-
-    Game::Hashtable* hashtable_dev;
-    HANDLE_RESULT(cudaMalloc(&hashtable_dev, sizeof(Game::Hashtable)))
-    HANDLE_RESULT(cudaMemcpy(hashtable_dev, &hashtable, sizeof(Game::Hashtable), cudaMemcpyHostToDevice))
+    Game::Heap* heaps_dev = make_heaps<Game::Node, Game::Value, num_heaps, heap_size>();
+    Game::Hashtable* hashtable_dev = make_hashtable<Game::Node, Game::Value, 1, hashtable_size>();
+    Game::Pool* pool_dev = make_pool<Game::State, pool_size>();
 
     Game::StatePtr* s_dev;
     HANDLE_RESULT(cudaMalloc(&s_dev, num_expanded_states * sizeof(Game::StatePtr)))
@@ -223,7 +215,7 @@ int main(int argc, char** argv) {
     Game::Node start = 0xFEDCBA9876543210;
     // Game::Node target = 0xEFDCBA8976543210;
     // Game::Node target = 0xFAEDB95C76803214;
-    Game::Node target = 0xFAEDB9C478513062;
+    Game::Node target = 0xFAEDB9C478510362;
 
     /*
     Game::Node* start_dev;
@@ -243,6 +235,7 @@ int main(int argc, char** argv) {
 
         extract_expand<Game><<<1, num_heaps, num_heaps * sizeof(Game::StatePtr)>>>(
                 heaps_dev,
+                pool_dev,
                 s_dev,
                 m_dev,
                 target);
