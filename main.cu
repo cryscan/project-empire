@@ -103,6 +103,13 @@ struct SlidingPad {
             s_dev[index * max_expansion + d] = expand_direction(state, d);
         }
     }
+
+    static __device__ void clear_slot(StatePtr* s_dev) {
+        auto index = blockIdx.x * blockDim.x + threadIdx.x;
+        for (auto d: {UP, RIGHT, DOWN, LEFT}) {
+            s_dev[index * max_expansion + d] = nullptr;
+        }
+    }
 };
 
 /*
@@ -216,7 +223,7 @@ int main(int argc, char** argv) {
     Game::Node start = 0xFEDCBA9876543210;
     // Game::Node target = 0xEFDCBA8976543210;
     // Game::Node target = 0xFAEDB95C76803214;
-    Game::Node target = 0xFAEDB9C478513620;
+    Game::Node target = 0xFAEDB9C478513062;
 
     /*
     Game::Node* start_dev;
@@ -240,12 +247,14 @@ int main(int argc, char** argv) {
                 m_dev,
                 target);
         HANDLE_RESULT(cudaGetLastError())
+        // HANDLE_RESULT(cudaDeviceSynchronize())
 
         compare_heap_best<Game><<<1, num_heaps, num_heaps * sizeof(Game::StatePtr)>>>(
                 heaps_dev,
                 m_dev,
                 found_dev);
         HANDLE_RESULT(cudaGetLastError())
+        // HANDLE_RESULT(cudaDeviceSynchronize())
 
         // if (i % 16 == 0) {
         HANDLE_RESULT(cudaMemcpy(&found, found_dev, sizeof(bool), cudaMemcpyDeviceToHost))
@@ -254,12 +263,12 @@ int main(int argc, char** argv) {
 
         remove_duplication<Game><<<max_expansion, num_heaps>>>(hashtable_dev, s_dev, t_dev);
         HANDLE_RESULT(cudaGetLastError())
+        // HANDLE_RESULT(cudaDeviceSynchronize())
 
         reinsert<Game><<<1, num_heaps>>>(hashtable_dev, heaps_dev, t_dev, target);
         HANDLE_RESULT(cudaGetLastError())
+        // HANDLE_RESULT(cudaDeviceSynchronize())
     }
-
-    HANDLE_RESULT(cudaDeviceSynchronize())
 
     Game::SerializedState solution[solution_size];
     Game::SerializedState* solution_dev;

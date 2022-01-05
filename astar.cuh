@@ -36,6 +36,7 @@ __global__ void extract_expand(typename Game::Heap* heaps_dev,
     if (global_index >= num_heaps) return;
     auto& heap = heaps_dev[global_index];
 
+    Game::clear_slot(s_dev);
     if (auto q = heap.pop()) {
         if (q->node == target) {
             // push candidate
@@ -158,8 +159,7 @@ __global__ void reinsert(typename Game::Hashtable* hashtable_dev,
         if (auto& ptr = t_dev[i]) {
             auto state = *ptr;
             hashtable.insert(state.node, ptr);
-            auto h = Game::heuristic(state.node, target);
-            ptr->f = state.g + h;
+            ptr->f = state.g + Game::heuristic(state.node, target);
             heap.push(ptr);
         }
     }
