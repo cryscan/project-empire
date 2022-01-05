@@ -215,7 +215,7 @@ int main(int argc, char** argv) {
     Game::Node start = 0xFEDCBA9876543210;
     // Game::Node target = 0xEFDCBA8976543210;
     // Game::Node target = 0xFAEDB95C76803214;
-    Game::Node target = 0xFAEDB9C478510362;
+    Game::Node target = 0x0AEDF9C4B8517362;
 
     /*
     Game::Node* start_dev;
@@ -324,6 +324,8 @@ int main(int argc, char** argv) {
             ++k;
         }
     }
+
+    HANDLE_RESULT(cudaDeviceReset())
 
     /*
     std::vector<Game::SerializedState> t_states(num_expanded_states);
