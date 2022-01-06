@@ -13,9 +13,11 @@ constexpr size_t num_heaps = 1024;
 constexpr size_t max_expansion = 4;
 constexpr size_t num_expanded_states = num_heaps * max_expansion;
 
-constexpr size_t num_iterations = 6144;
+constexpr size_t num_iterations = 8192;
 constexpr size_t heap_size = 4 * num_iterations;
-constexpr size_t hashtable_size = num_iterations * num_iterations;
+// constexpr size_t hashtable_size = num_iterations * num_iterations;
+// constexpr size_t hashtable_size = 524287;
+constexpr size_t hashtable_size = 1048573;
 constexpr size_t pool_size = num_expanded_states * num_iterations;
 
 constexpr size_t solution_size = 100;
