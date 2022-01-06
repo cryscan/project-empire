@@ -218,7 +218,7 @@ int main(int argc, char** argv) {
     // Game::Node target = 0xEFDCBA8976543210;
     // Game::Node target = 0xFAEDB95C76803214;
     // Game::Node target = 0x0AEDF9C4B8517362;
-    Game::Node target = 0xA9EDF0C4B8517362;
+    Game::Node target = 0xAECDF904B8517362;
 
     /*
     Game::Node* start_dev;
@@ -233,13 +233,12 @@ int main(int argc, char** argv) {
     init_heaps<Game><<<1, 1>>>(heaps_dev, start, target);
     HANDLE_RESULT(cudaGetLastError())
     HANDLE_RESULT(cudaDeviceSynchronize())
-    
-    //std::clock_t c_start = std::clock();
-    std::chrono::time_point<std::chrono::system_clock> timestart, timeend;
-    timestart = std::chrono::system_clock::now();
-    for (int i = 0; i < solution_size; ++i) {
-        std::cout << "Iteration " << i << '\n';
 
+    //std::clock_t c_start = std::clock();
+    auto tic = std::chrono::high_resolution_clock::now();
+
+    auto iter = 0u;
+    for (; iter < num_iterations; ++iter) {
         extract_expand<Game><<<1, num_heaps, num_heaps * sizeof(Game::StatePtr)>>>(
                 heaps_dev,
                 pool_dev,
@@ -249,17 +248,17 @@ int main(int argc, char** argv) {
         HANDLE_RESULT(cudaGetLastError())
         // HANDLE_RESULT(cudaDeviceSynchronize())
 
-        if (i % 16 == 0) {
-            compare_heap_best<Game><<<1, num_heaps, num_heaps * sizeof(Game::StatePtr)>>>(
-                    heaps_dev,
-                    m_dev,
-                    found_dev);
-            HANDLE_RESULT(cudaGetLastError())
-            // HANDLE_RESULT(cudaDeviceSynchronize())
+        // if (i % 16 == 0) {
+        compare_heap_best<Game><<<1, num_heaps, num_heaps * sizeof(Game::StatePtr)>>>(
+                heaps_dev,
+                m_dev,
+                found_dev);
+        HANDLE_RESULT(cudaGetLastError())
+        // HANDLE_RESULT(cudaDeviceSynchronize())
 
-            HANDLE_RESULT(cudaMemcpy(&found, found_dev, sizeof(bool), cudaMemcpyDeviceToHost))
-            if (found) break;
-        }
+        HANDLE_RESULT(cudaMemcpy(&found, found_dev, sizeof(bool), cudaMemcpyDeviceToHost))
+        if (found) break;
+        // }
 
         remove_duplication<Game><<<max_expansion, num_heaps>>>(hashtable_dev, s_dev, t_dev);
         HANDLE_RESULT(cudaGetLastError())
@@ -272,8 +271,8 @@ int main(int argc, char** argv) {
 
     Game::SerializedState solution[solution_size];
     Game::SerializedState* solution_dev;
-    HANDLE_RESULT(cudaMalloc(&solution_dev, solution_size * sizeof(Game::SerializedState)))
-    HANDLE_RESULT(cudaMemset(solution_dev, 0, solution_size * sizeof(Game::SerializedState)))
+    HANDLE_RESULT(cudaMalloc(&solution_dev, 100 * sizeof(Game::SerializedState)))
+    HANDLE_RESULT(cudaMemset(solution_dev, 0, 100 * sizeof(Game::SerializedState)))
 
     extract_chain<Game><<<1, 1>>>(m_dev, solution_dev);
 
@@ -283,14 +282,10 @@ int main(int argc, char** argv) {
                              cudaMemcpyDeviceToHost))
 
     HANDLE_RESULT(cudaDeviceSynchronize())
-    //std::clock_t c_end = std::clock();
-    timeend = std::chrono::system_clock::now();
 
-    std::chrono::duration<double> elapsed_seconds = timeend - timestart;
-    std::time_t end_time = std::chrono::system_clock::to_time_t(timeend);
+    auto toc = std::chrono::high_resolution_clock::now();
 
-    
-    //auto time_elapsed_ms = 1000.0 * (c_end - c_start) / CLOCKS_PER_SEC;
+    auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(toc - tic);
 
     std::cout << std::endl << "Solution:\n";
     for (auto x: solution) {
@@ -308,9 +303,9 @@ int main(int argc, char** argv) {
         }
         std::cout << std::endl;
     }
-    // std::cout << "CPU time used: " << time_elapsed_ms << " ms\n";
-    std::cout << "finished computation at " << std::ctime(&end_time)
-        << "elapsed time: " << elapsed_seconds.count() << "s\n";
+
+    std::cout << "Iterations " << iter << '\n';
+    std::cout << "Elapsed time: " << milliseconds.count() << "ms\n";
 
     Game::SerializedState heap_bests[num_heaps];
     Game::SerializedState* heap_bests_dev;
