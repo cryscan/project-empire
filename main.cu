@@ -2,6 +2,8 @@
 #include <iostream>
 #include <fstream>
 #include <cuda_runtime.h>
+#include <ctime>
+#include <chrono>
 
 #include "common.cuh"
 #include "heap.cuh"
@@ -215,7 +217,8 @@ int main(int argc, char** argv) {
     Game::Node start = 0xFEDCBA9876543210;
     // Game::Node target = 0xEFDCBA8976543210;
     // Game::Node target = 0xFAEDB95C76803214;
-    Game::Node target = 0x0AEDF9C4B8517362;
+    // Game::Node target = 0x0AEDF9C4B8517362;
+    Game::Node target = 0xA9EDF0C4B8517362;
 
     /*
     Game::Node* start_dev;
@@ -229,7 +232,11 @@ int main(int argc, char** argv) {
 
     init_heaps<Game><<<1, 1>>>(heaps_dev, start, target);
     HANDLE_RESULT(cudaGetLastError())
-
+    HANDLE_RESULT(cudaDeviceSynchronize())
+    
+    //std::clock_t c_start = std::clock();
+    std::chrono::time_point<std::chrono::system_clock> timestart, timeend;
+    timestart = std::chrono::system_clock::now();
     for (int i = 0; i < solution_size; ++i) {
         std::cout << "Iteration " << i << '\n';
 
@@ -276,6 +283,14 @@ int main(int argc, char** argv) {
                              cudaMemcpyDeviceToHost))
 
     HANDLE_RESULT(cudaDeviceSynchronize())
+    //std::clock_t c_end = std::clock();
+    timeend = std::chrono::system_clock::now();
+
+    std::chrono::duration<double> elapsed_seconds = timeend - timestart;
+    std::time_t end_time = std::chrono::system_clock::to_time_t(timeend);
+
+    
+    //auto time_elapsed_ms = 1000.0 * (c_end - c_start) / CLOCKS_PER_SEC;
 
     std::cout << std::endl << "Solution:\n";
     for (auto x: solution) {
@@ -293,6 +308,9 @@ int main(int argc, char** argv) {
         }
         std::cout << std::endl;
     }
+    // std::cout << "CPU time used: " << time_elapsed_ms << " ms\n";
+    std::cout << "finished computation at " << std::ctime(&end_time)
+        << "elapsed time: " << elapsed_seconds.count() << "s\n";
 
     Game::SerializedState heap_bests[num_heaps];
     Game::SerializedState* heap_bests_dev;
