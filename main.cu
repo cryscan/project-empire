@@ -242,17 +242,17 @@ int main(int argc, char** argv) {
         HANDLE_RESULT(cudaGetLastError())
         // HANDLE_RESULT(cudaDeviceSynchronize())
 
-        compare_heap_best<Game><<<1, num_heaps, num_heaps * sizeof(Game::StatePtr)>>>(
-                heaps_dev,
-                m_dev,
-                found_dev);
-        HANDLE_RESULT(cudaGetLastError())
-        // HANDLE_RESULT(cudaDeviceSynchronize())
+        if (i % 16 == 0) {
+            compare_heap_best<Game><<<1, num_heaps, num_heaps * sizeof(Game::StatePtr)>>>(
+                    heaps_dev,
+                    m_dev,
+                    found_dev);
+            HANDLE_RESULT(cudaGetLastError())
+            // HANDLE_RESULT(cudaDeviceSynchronize())
 
-        // if (i % 16 == 0) {
-        HANDLE_RESULT(cudaMemcpy(&found, found_dev, sizeof(bool), cudaMemcpyDeviceToHost))
-        if (found) break;
-        // }
+            HANDLE_RESULT(cudaMemcpy(&found, found_dev, sizeof(bool), cudaMemcpyDeviceToHost))
+            if (found) break;
+        }
 
         remove_duplication<Game><<<max_expansion, num_heaps>>>(hashtable_dev, s_dev, t_dev);
         HANDLE_RESULT(cudaGetLastError())
@@ -274,6 +274,8 @@ int main(int argc, char** argv) {
                              solution_dev,
                              solution_size * sizeof(Game::SerializedState),
                              cudaMemcpyDeviceToHost))
+
+    HANDLE_RESULT(cudaDeviceSynchronize())
 
     std::cout << std::endl << "Solution:\n";
     for (auto x: solution) {

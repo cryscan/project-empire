@@ -59,7 +59,7 @@ __global__ void extract_expand(typename Game::Heap* heaps_dev,
             auto& a = buf[index];
             auto& b = buf[index + i];
             // a <- min(a, b)
-            if ((a && b && b->f < a->f) || !a) a = std::move(b);
+            if ((a && b && b->g < a->g) || !a) a = std::move(b);
         }
         __syncthreads();
     }
@@ -68,7 +68,7 @@ __global__ void extract_expand(typename Game::Heap* heaps_dev,
         auto& a = m_dev[block_index];
         auto& b = buf[0];
         // a <- min(a, b)
-        if ((a && b && b->f < a->f) || !a) a = std::move(b);
+        if ((a && b && b->g < a->g) || !a) a = std::move(b);
     }
 
     __syncthreads();
@@ -77,7 +77,7 @@ __global__ void extract_expand(typename Game::Heap* heaps_dev,
         for (auto i = 1u; i < gridDim.x; ++i) {
             auto& a = m_dev[0];
             auto& b = m_dev[i];
-            if ((a && b && b->f < a->f) || !a) a = std::move(b);
+            if ((a && b && b->g < a->g) || !a) a = std::move(b);
         }
     }
 }
@@ -114,7 +114,7 @@ __global__ void compare_heap_best(typename Game::Heap* heaps_dev,
 
     if (index == 0) {
         auto b = std::move(buf[0]);
-        found_dev[block_index] = m_dev[0] && ((b && m_dev[0]->f <= b->f) || !b);
+        found_dev[block_index] = m_dev[0] && ((b && m_dev[0]->g <= b->f) || !b);
     }
 
     __syncthreads();
